@@ -1,17 +1,20 @@
 from collections import namedtuple, deque
 import pickle
-from typing import List
+from typing import Union, List
+import torch
 import torch.nn.functional as F
-import ExperienceReplayBuffer from .model.experience_replay_buffer
+import numpy as np
 import events as e
-from typing import Union
+import settings as s
+from .model.experience_replay_buffer import ExperienceReplayBuffer
+from .model.network import Network
 from .callbacks import state_to_features
 
 # Events
 PLACEHOLDER_EVENT = "PLACEHOLDER"
 
 
-def setup_training(self):
+def setup_training(self) -> None:
     """
     Initialise self for training purpose.
 
@@ -22,24 +25,19 @@ def setup_training(self):
 
     # Initialize the experience replay memory
     self.buffer = ExperienceReplayBuffer(buffer_capacity=self.CONFIG["BUFFER_CAPACITY"], device=self.device)
-
-    # Initalize the optimizer
-    self.optimizer = torch.optim.Adam(self.local_q_network.parameters(), lr=self.CONFIG["LEARNING_RATE"])
-
     # Initialize the target Q-network
-    self.target_q_network = Network(state_size=self.CONFIG["STATE_SIZE"], action_size=self.CONFIG["ACTION_SIZE"]).to(self.device)
-
+    self.target_q_network = Network(channel_size=self.CONFIG["CHANNEL_SIZE"], column_size=(s.COLS - 2), row_size=(s.ROWS - 2), action_size=self.CONFIG["ACTION_SIZE"]).to(self.device)
     # Load the weights of the local Q-network to the target Q-network
     self.target_q_network.load_state_dict(self.local_q_network.state_dict())
-
+    # Initalize the optimizer
+    self.optimizer = torch.optim.Adam(self.local_q_network.parameters(), lr=self.CONFIG["LEARNING_RATE"])
     # Initialize the exploration rate
     self.exploration_rate = self.CONFIG["EXPLORATION_RATE_START"]
-
     # Initialize the total number of steps
     self.total_steps = 0
 
 
-def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_state: dict, events: List[str]):
+def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_state: dict, events: List[str]) -> None:
     """
     Called once per step to allow intermediate rewards based on game events.
 
@@ -57,17 +55,17 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     :param events: The events that occurred when going from  `old_game_state` to `new_game_state`
     """
 
-    # Handle the step
-    self.handle_step(state=state_to_features(old_game_state), action=self_action, reward=reward_from_events(events), next_state=state_to_features(new_game_state))
-
-    self.logger.debug(f"Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}")
-
     # TODO: Add your own events to hand out rewards
     if False:
         events.append(PLACEHOLDER_EVENT)
 
+    self.logger.debug(f"Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}")
 
-def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]):
+    # Handle the step
+    handle_step(self, state=state_to_features(old_game_state), action=self_action, reward=reward_from_events(self, events=events), next_state=state_to_features(new_game_state))
+
+
+def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]) -> None:
     """
     Called at the end of each game or when the agent died to hand out final rewards.
     This replaces game_events_occurred in this round.
@@ -80,11 +78,11 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
 
     :param self: The same object that is passed to all of your callbacks.
     """
+    
+    self.logger.debug(f"Encountered event(s) {", ".join(map(repr, events))} in final step")
 
     # Handle the step
-    self.handle_step(state=state_to_features(old_game_state), action=self_action, reward=reward_from_events(events), next_state=None)
-
-    self.logger.debug(f"Encountered event(s) {", ".join(map(repr, events))} in final step")
+    handle_step(self, state=state_to_features(last_game_state), action=last_action, reward=reward_from_events(self, events=events), next_state=None)
 
     # TODO: Store the model
     # with open("my-saved-model.pt", "wb") as file:
@@ -123,55 +121,17 @@ def handle_step(self, state: np.ndarray, action: str, reward: float, next_state:
 
     # Store the experience in the buffer
     self.buffer.push(state=state, action=action, reward=reward, next_state=next_state)
-
     # Update the exploration rate
-    self.exploration_rate = update_exploration_rate(self.exploration_rate)
-
+    self.exploration_rate = update_exploration_rate(self, self.exploration_rate)
     # Increment the total number of steps
     self.total_steps += 1
-
     # Check if the agent should be trained and if the buffer has enough experiences to sample a batch
-    if self.total_steps % self.CONFIG["TRAINING_FREQUENCY"] and len(self.buffer) > self.CONFIG["BATCH_SIZE"]:
+    if self.total_steps % self.CONFIG["TRAINING_FREQUENCY"] == 0 and len(self.buffer) > self.CONFIG["BUFFER_MIN_SIZE"]:
         # Train the model
-        self.train()
-
+        train_network(self)
     #  Check if the target Q-network should be updated
     if self.total_steps % self.CONFIG["TARGET_UPDATE_FREQUENCY"] == 0:
-        self.update_target_network()
-
-
-def train(self) -> None:
-    """ Train the local Q-network. """
-
-    # Sample a batch of experiences from the buffer
-    states, actions, rewards, next_states, dones = self.buffer.sample(batch_size=self.CONFIG["BATCH_SIZE"])
-    # Get the Q-values of the taken actions for the states from the local Q-network
-    # NB: Add a dummy dimension with unsqueeze(1) for the actions to obtain the shape (batch_size, 1)
-    #     This is necessary because .gather requires the shape of the actions to match the shape of the output of the local Q-network
-    # NB: Remove the dummy dimension with squeeze(1) to obtain the shape (batch_size, ) for q_values
-    q_values = self.local_q_network(states).gather(dim=1, index=actions.unsqueeze(1)).squeeze(1)
-    # Get the maximum of the Q-values of the actions for the next states from the target Q-network
-    # NB: Detach the tensor to prevent backpropagation through the target Q-network
-    # The shape of next_q_values_max is (batch_size, )
-    next_q_values_max = self.target_q_network(next_states).detach().max(dim=1)[0]        
-    # Calculate the target Q-values
-    target_q_values = rewards + self.CONFIG["DISCOUNT_RATE"] * next_q_values_max * (1 - dones)
-    # Compute the MSE loss
-    loss = F.mse_loss(q_expected, target_q_values)
-    # Reset the gradients
-    optimizer.zero_grad()
-    # Peform the backpropagation
-    loss.backward()
-    # Update the weights
-    optimizer.step()
-
-
-def update_target_network(self) -> None:
-    """ Update the target Q-network. """
-
-    self.logger.debug(f"Updating target Q-network in round {last_game_state["round"]}")
-    # TODO: Try soft update instead of hard update
-    self.target_q_network.load_state_dict(self.local_q_network.state_dict()) 
+        update_target_network(self)
 
 
 def update_exploration_rate(self, exploration_rate: float) -> float:
@@ -185,6 +145,43 @@ def update_exploration_rate(self, exploration_rate: float) -> float:
     """
     
     # Decay the exploration rate if it is above the minimum exploration rate
-    return max(self.CONFIG["EXPLORATION_RATE_MIN"], exploration_rate * self.CONFIG["EXPLORATION_DECAY"])
+    return max(self.CONFIG["EXPLORATION_RATE_MIN"], exploration_rate * self.CONFIG["EXPLORATION_RATE_DECAY"])
 
-    
+
+def train_network(self) -> None:
+    """ Train the local Q-network. """
+
+    # Set the local network to training mode
+    self.local_q_network.train()
+    # Sample a batch of experiences from the buffer
+    states, actions, rewards, next_states, dones = self.buffer.sample(batch_size=self.CONFIG["BATCH_SIZE"])
+    # Get the Q-values of the taken actions for the states from the local Q-network
+    # NB: Add a dummy dimension with unsqueeze(1) for the actions to obtain the shape (batch_size, 1)
+    #     This is necessary because .gather requires the shape of the actions to match the shape of the output of the local Q-network
+    # NB: Remove the dummy dimension with squeeze(1) to obtain the shape (batch_size, ) for q_values  
+    q_values = self.local_q_network(states).gather(dim=1, index=actions.unsqueeze(1)).squeeze(1)
+    # Get the maximum of the Q-values of the actions for the next states from the target Q-network
+    # NB: Detach the tensor to prevent backpropagation through the target Q-network
+    # The shape of next_q_values_max is (batch_size, )
+    next_q_values_max = self.target_q_network(next_states).detach().max(dim=1)[0]        
+    # Calculate the target Q-values
+    target_q_values = rewards + self.CONFIG["DISCOUNT_RATE"] * next_q_values_max * (1 - dones)
+    # Compute the MSE loss
+    loss = F.mse_loss(q_values, target_q_values)
+    # Reset the gradients
+    self.optimizer.zero_grad()
+    # Peform the backpropagation
+    loss.backward()
+    print(loss.item())
+    # Update the weights
+    self.optimizer.step()
+    # Set the local network back to evaluation mode
+    self.local_q_network.eval()
+
+
+def update_target_network(self) -> None:
+    """ Update the target Q-network. """
+
+    self.logger.debug(f"Updating target Q-network.")
+    # TODO: Try soft update instead of hard update
+    self.target_q_network.load_state_dict(self.local_q_network.state_dict()) 

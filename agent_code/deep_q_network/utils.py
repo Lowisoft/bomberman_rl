@@ -69,3 +69,53 @@ def action_index_to_str(index: int) -> str:
   # Return the action as a string
   return action_mapping[index]
 
+
+def crop_channel(channel: np.ndarray, border_size: int) -> np.ndarray:
+    """ Crop the channel by removing the border.
+
+    Args:
+        channel (np.array): The channel to crop.
+        border_size (int): The size of the border to remove.
+
+    Returns:
+        np.array: The cropped channel.
+    """
+
+    # Crop the channel by removing the border
+    return channel[border_size:-border_size, border_size:-border_size]
+
+
+def get_bomb_blast_coords(x: int, y: int, power: int, arena: np.ndarray) -> list:
+    """ Get the coordinates of the blast of a bomb. Taken from item.py.
+        NB: The blast only stops at walls but not stop at crates, players, coins or other bombs.
+
+    Args:
+        x (int): The x-coordinate of the bomb.
+        y (int): The y-coordinate of the bomb.
+        power (int): The power of the bomb.
+        arena (np.ndarray): The current state of the arena/field.
+
+    Returns:
+        list: The coordinates of the blast of the bomb.
+    """
+
+    blast_coords = [(x, y)]
+
+    for i in range(1, power + 1):
+        if arena[x + i, y] == -1:
+            break
+        blast_coords.append((x + i, y))
+    for i in range(1, power + 1):
+        if arena[x - i, y] == -1:
+            break
+        blast_coords.append((x - i, y))
+    for i in range(1, power + 1):
+        if arena[x, y + i] == -1:
+            break
+        blast_coords.append((x, y + i))
+    for i in range(1, power + 1):
+        if arena[x, y - i] == -1:
+            break
+        blast_coords.append((x, y - i))
+
+    return blast_coords

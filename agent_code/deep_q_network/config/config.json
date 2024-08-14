@@ -1,11 +1,12 @@
 {
     "NAME": "deep_q_network",
-    "STATE_SIZE": 225,
+    "CHANNEL_SIZE": 4,
     "ACTION_SIZE": 6,
     
     "LEARNING_RATE": 0.001,
     "BATCH_SIZE": 32,
     "BUFFER_CAPACITY": 10000,
+    "BUFFER_MIN_SIZE": 1000,
     "EXPLORATION_RATE_START": 1.0,
     "EXPLORATION_RATE_DECAY": 0.998,
     "EXPLORATION_RATE_MIN": 0.01,
