@@ -60,6 +60,8 @@ class ExperienceReplayBuffer(object):
         batch = random.sample(self.buffer, batch_size)
         # Extract the components of the experiences into separate lists
         states, actions, rewards, next_states = map(list, zip(*batch))
+        # Get the shape of the states (will used later to create the dummy zero state)
+        state_shape = states[0].shape
         # Stack the states to obtain the shape (batch_size, channel_size, column_size, row_size) and convert to tensor
         states = torch.from_numpy(np.stack(states, axis=0)).float().to(self.device)
         # Convert the actions to a tensor
@@ -71,7 +73,7 @@ class ExperienceReplayBuffer(object):
         dones = np.array([next_state is None for next_state in next_states], dtype=bool)
         # Search for next states that are None and convert them to a dummy zero state
         next_states = np.array([
-            np.zeros_like(states[0]) if done else next_state
+            np.zeros(state_shape) if done else next_state
             for next_state, done in zip(next_states, dones)
         ])
         # Stack the next states to obtain the shape (batch_size, channel_size, column_size, row_size) and convert to tensor
