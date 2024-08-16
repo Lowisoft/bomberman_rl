@@ -213,10 +213,10 @@ def load_network(network, network_path: str, device: torch.device) -> None:
     """
     # Load the network
     with open(network_path, 'rb') as f:
-        network.load_state_dict(torch.load(f, map_location=device))
+        network.load_state_dict(torch.load(f, map_location=device, weights_only=True))
 
 
-def load_training_data_and_buffer(optimizer, buffer, training_data_path: str, buffer_path:str, device: torch.device) -> Tuple[float float, int]:
+def load_training_data_and_buffer(optimizer, buffer, training_data_path: str, buffer_path:str, device: torch.device) -> Tuple[float, float, int]:
     """ Load the training data and the buffer.
 
     Args:
@@ -233,10 +233,10 @@ def load_training_data_and_buffer(optimizer, buffer, training_data_path: str, bu
     training_data = None
     # Load the training data
     with open(training_data_path, 'rb') as f:
-        training_data = torch.load(f, map_location=device)
+        training_data = torch.load(f, map_location=device, weights_only=True)
 
     optimizer.load_state_dict(training_data['optimizer'])
-    
+
     # Move the optimizer to the device
     move_optimizer_to_device(optimizer, device)
 
@@ -259,14 +259,14 @@ def move_optimizer_to_device(optimizer, device: torch.device) -> None:
         device (torch.device): The device to move the optimizer to.
     """
     for param in optimizer.state.values():
-    # Not sure there are any global tensors in the state dict
-    if isinstance(param, torch.Tensor):
-        param.data = param.data.to(device)
-        if param._grad is not None:
-            param._grad.data = param._grad.data.to(device)
-    elif isinstance(param, dict):
-        for subparam in param.values():
-            if isinstance(subparam, torch.Tensor):
-                subparam.data = subparam.data.to(device)
-                if subparam._grad is not None:
-                    subparam._grad.data = subparam._grad.data.to(device)
+        # Not sure there are any global tensors in the state dict
+        if isinstance(param, torch.Tensor):
+            param.data = param.data.to(device)
+            if param._grad is not None:
+                param._grad.data = param._grad.data.to(device)
+        elif isinstance(param, dict):
+            for subparam in param.values():
+                if isinstance(subparam, torch.Tensor):
+                    subparam.data = subparam.data.to(device)
+                    if subparam._grad is not None:
+                        subparam._grad.data = subparam._grad.data.to(device)
