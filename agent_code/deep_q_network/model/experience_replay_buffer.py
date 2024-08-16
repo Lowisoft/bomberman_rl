@@ -1,4 +1,5 @@
 import random
+import pickle
 import torch
 from collections import deque
 import numpy as np
@@ -80,3 +81,25 @@ class ExperienceReplayBuffer(object):
         dones = torch.from_numpy(dones).float().to(self.device)
 
         return states, actions, rewards, next_states, dones
+
+
+    def save(self, path: str) -> None:
+        """ Saves the buffer to a file.
+
+        Args:
+            path (str): The path to the file where the buffer will be saved.
+        """
+
+        with open(path, 'wb') as f:
+            pickle.dump(self.buffer, f)
+
+
+    def load(self, path: str) -> None:
+        """ Loads the buffer from a file.
+
+        Args:
+            path (str): The path to the file where the buffer will be loaded from.
+        """
+
+        with open(path, 'rb') as f:
+            self.buffer = pickle.load(f)

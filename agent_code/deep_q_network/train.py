@@ -1,5 +1,5 @@
 from collections import namedtuple, deque
-import pickle
+import os
 from typing import Union, List
 import torch
 import torch.nn.functional as F
@@ -9,7 +9,7 @@ import settings as s
 from .model.experience_replay_buffer import ExperienceReplayBuffer
 from .model.network import Network
 from .callbacks import state_to_features
-from .utils import round_ended_but_not_dead, set_seed, unset_seed
+from .utils import round_ended_but_not_dead, set_seed, unset_seed, save_data, load_training_data_and_buffer
 
 # Events
 PLACEHOLDER_EVENT = "PLACEHOLDER"
@@ -24,22 +24,38 @@ def setup_training(self) -> None:
     :param self: This object is passed to all callbacks and you can set arbitrary values.
     """
 
-    # Initialize the experience replay memory
-    self.buffer = ExperienceReplayBuffer(buffer_capacity=self.CONFIG["BUFFER_CAPACITY"], device=self.device)
     # Initialize the target Q-network
     self.target_q_network = Network(channel_size=self.CONFIG["CHANNEL_SIZE"], column_size=(s.COLS - 2), row_size=(s.ROWS - 2), action_size=self.CONFIG["ACTION_SIZE"]).to(self.device)
     # Load the weights of the local Q-network to the target Q-network
     self.target_q_network.load_state_dict(self.local_q_network.state_dict())
+    # Initialize the experience replay memory
+    self.buffer = ExperienceReplayBuffer(buffer_capacity=self.CONFIG["BUFFER_CAPACITY"], device=self.device)
     # Initalize the optimizer
     self.optimizer = torch.optim.Adam(self.local_q_network.parameters(), lr=self.CONFIG["LEARNING_RATE"])
-    # Initialize the exploration rate
-    self.exploration_rate = self.CONFIG["EXPLORATION_RATE_START"]
+    
+    # Check if the training data and the buffer exist and load them if they do
+    if os.path.isfile(self.CONFIG["TRAINING_DATA_PATH"]) and os.path.isfile(self.CONFIG["BUFFER_PATH"]):
+        print("Loading training data and buffer from saved state.")
+        self.exploration_rate, self.testing_best_average_score, self.training_steps = load_training_data_and_buffer(
+            optimizer=self.optimizer, 
+            buffer=self.buffer, 
+            training_data_path=self.CONFIG["TRAINING_DATA_PATH"], 
+            buffer_path=self.CONFIG["BUFFER_PATH"],
+            device=self.device)
+    # Otherwise, set up the model from scratch
+    else:
+        print("Setting up training data and buffer from scratch.")
+        # Initialize the exploration rate
+        self.exploration_rate = self.CONFIG["EXPLORATION_RATE_START"]
+        # Initialize the number of steps performed in training (exluding testing)
+        self.training_steps = 0
+        # Initialize the best average score achieved in the testing phase
+        self.testing_best_average_score = 0
+
     # Initialize whether the agent is tested during training on a set of rounds/games with a fixed seed 
     self.test_training = False
     # Initialize whether the testing during training should be started in the next game/round
     self.start_test_training_next_round = False
-    # Initialize the number of steps performed in training (exluding testing)
-    self.training_steps = 0
     # Initialize the number of rounds/games performed in a testing phase during training (reset to 0 after each testing phase)
     self.testing_rounds = 0
     # Initialize the total reward in the testing phase
@@ -115,10 +131,6 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
         change_world_seed=last_game_state["change_world_seed"],
         is_end_of_round=True)
 
-    # TODO: Store the model
-    # with open("my-saved-model.pt", "wb") as file:
-    #     pickle.dump(self.model, file)
-
 
 def reward_from_events(self, events: List[str]) -> int:
     """
@@ -168,9 +180,27 @@ def handle_step(self, state: np.ndarray, action: str, reward: float, next_state:
                 self.test_training = False
                 # Unset the seed for the testing phase
                 unset_seed(change_world_seed, self.use_cuda)
+                average_reward = self.testing_total_reward / self.CONFIG["ROUNDS_PER_TEST"]
+                average_score = self.testing_total_score / self.CONFIG["ROUNDS_PER_TEST"]
                 # Print the results of the testing phase
-                print("Average reward:", self.testing_total_reward / self.CONFIG["ROUNDS_PER_TEST"])
-                print("Average score:", self.testing_total_score / self.CONFIG["ROUNDS_PER_TEST"])
+                print("Average reward:", average_reward)
+                print("Average score:", average_score)
+                # Check if the average score is higher than the best score
+                if average_score > self.testing_best_average_score:
+                    # Update the best score
+                    self.testing_best_average_score = average_score
+                    # Save the model
+                    print("Save the model") 
+                    save_data(
+                        network=self.local_q_network, 
+                        optimizer=self.optimizer, 
+                        buffer=self.buffer, 
+                        exploration_rate=self.exploration_rate,
+                        testing_best_average_score=self.testing_best_average_score, 
+                        training_steps=self.training_steps, 
+                        network_path=self.CONFIG["NETWORK_PATH"],
+                        training_data_path=self.CONFIG["TRAINING_DATA_PATH"], 
+                        buffer_path=self.CONFIG["BUFFER_PATH"])
     # Otherwise the agent is in training mode
     else:
         # Store the experience in the buffer

@@ -1,5 +1,8 @@
 {
     "NAME": "deep_q_network",
+    "NETWORK_PATH": "./model/network.pth",
+    "TRAINING_DATA_PATH": "./model/training_data.pth",
+    "BUFFER_PATH": "./model/experience_replay_buffer.pkl",
     "CHANNEL_SIZE": 4,
     "ACTION_SIZE": 6,
     
@@ -8,7 +11,7 @@
     "BUFFER_CAPACITY": 10000,
     "BUFFER_MIN_SIZE": 1000,
     "EXPLORATION_RATE_START": 1.0,
-    "EXPLORATION_RATE_DECAY": 0.998,
+    "EXPLORATION_RATE_DECAY": 0.9998,
     "EXPLORATION_RATE_MIN": 0.01,
     "DISCOUNT_RATE": 0.95,
     "TRAINING_FREQUENCY": 100,

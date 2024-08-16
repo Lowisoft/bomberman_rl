@@ -1,6 +1,7 @@
 import random
 import torch
 import numpy as np
+from typing import Tuple
 import settings as s
 
 def set_seed(seed: int, change_world_seed, use_cuda: bool = False) -> None:
@@ -168,3 +169,104 @@ def round_ended_but_not_dead(self, game_state: dict) -> bool:
         return True
 
     return False
+
+
+def save_data(network, optimizer, buffer, exploration_rate: float, testing_best_average_score: float, training_steps: int, network_path: str, training_data_path: str, buffer_path: str) -> None:
+    """ Save the data.
+
+    Args:
+        network (Network): The deep Q-network.
+        optimizer: The optimizer of the network.
+        buffer (ExperienceReplayBuffer): The experience replay buffer.
+        exploration_rate (float): The exploration rate.
+        testing_best_average_score (float): The best average score achieved during testing.
+        training_steps (int): The number of training steps.
+        network_path (str): The path to save the network.
+        training_data_path (str): The path to save the training data.
+        buffer_path (str): The path to save the buffer.
+    """
+
+    # Create a dictionary to store the training_data
+    training_data = {
+        "optimizer": optimizer.state_dict(),
+        "exploration_rate": exploration_rate,
+        "testing_best_average_score": testing_best_average_score,
+        "training_steps": training_steps
+    }
+    # Save the network to a file
+    with open(network_path, 'wb') as f:
+        torch.save(network.state_dict(), f)
+    # Save the training_data to a file
+    with open(training_data_path, 'wb') as f:
+        torch.save(training_data, f)
+    # Save the buffer to a file
+    buffer.save(buffer_path)
+
+
+def load_network(network, network_path: str, device: torch.device) -> None:
+    """ Load the network.
+
+    Args:
+        network (Network): The network to load the state_dict into.
+        network_path (str): The path to the network.
+        device (torch.device): The device to load the network on.
+    """
+    # Load the network
+    with open(network_path, 'rb') as f:
+        network.load_state_dict(torch.load(f, map_location=device))
+
+
+def load_training_data_and_buffer(optimizer, buffer, training_data_path: str, buffer_path:str, device: torch.device) -> Tuple[float float, int]:
+    """ Load the training data and the buffer.
+
+    Args:
+        optimizer: The optimizer of the network.
+        buffer (ExperienceReplayBuffer): The experience replay buffer.
+        training_data_path (str): The path to the training data.
+        buffer_path (str): The path to the buffer.
+        device (torch.device): The device to load the buffer on
+
+    Returns:
+        Tuple[float, float, int]: The exploration rate, the best average score achieved during testing and the number of training steps.
+    """
+
+    training_data = None
+    # Load the training data
+    with open(training_data_path, 'rb') as f:
+        training_data = torch.load(f, map_location=device)
+
+    optimizer.load_state_dict(training_data['optimizer'])
+    
+    # Move the optimizer to the device
+    move_optimizer_to_device(optimizer, device)
+
+    exploration_rate = training_data['exploration_rate']
+    testing_best_average_score = training_data['testing_best_average_score']
+    training_steps = training_data['training_steps']
+
+    # Load the buffer
+    buffer.load(buffer_path)
+    
+    return exploration_rate, testing_best_average_score, training_steps
+
+
+def move_optimizer_to_device(optimizer, device: torch.device) -> None:
+    """ Move the optimizer to the device, since this is not done automatically.
+        See: https://github.com/pytorch/pytorch/issues/8741#issuecomment-402129385
+
+    Args:
+        optimizer: The optimizer to move.
+        device (torch.device): The device to move the optimizer to.
+    """
+    for param in optimizer.state.values():
+    # Not sure there are any global tensors in the state dict
+    if isinstance(param, torch.Tensor):
+        param.data = param.data.to(device)
+        if param._grad is not None:
+            param._grad.data = param._grad.data.to(device)
+    elif isinstance(param, dict):
+        for subparam in param.values():
+            if isinstance(subparam, torch.Tensor):
+                subparam.data = subparam.data.to(device)
+                if subparam._grad is not None:
+                    subparam._grad.data = subparam._grad.data.to(device)

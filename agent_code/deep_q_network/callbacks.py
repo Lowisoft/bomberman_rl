@@ -1,11 +1,10 @@
 import os
-import pickle
 import json
 import torch
 import random
 import numpy as np
 import settings as s
-from .utils import action_index_to_str, crop_channel, get_bomb_blast_coords
+from .utils import action_index_to_str, crop_channel, get_bomb_blast_coords, load_network
 from .model.network import Network
 
 def setup(self) -> None:
@@ -34,20 +33,19 @@ def setup(self) -> None:
 
     # Initialize the local Q-network
     self.local_q_network = Network(channel_size=self.CONFIG["CHANNEL_SIZE"], column_size=(s.COLS - 2), row_size=(s.ROWS - 2), action_size=self.CONFIG["ACTION_SIZE"]).to(self.device)
-    # Initialize the weights of the local Q-network using the Kaiming initialization
-    self.local_q_network.initialize_weights_kaiming()
+
+    # Check if the network exists and load it if it does
+    if os.path.isfile(self.CONFIG["NETWORK_PATH"]):
+        print("Loading network from saved state.")
+        load_network(network=self.local_q_network, network_path=self.CONFIG["NETWORK_PATH"], device=self.device)
+    # Otherwise, set up the model from scratch
+    else:
+        print("Setting up network from scratch.")
+        # Initialize the weights of the local Q-network using the Kaiming initialization
+        self.local_q_network.initialize_weights_kaiming()
+
     # Set the local network to evaluation mode
     self.local_q_network.eval()
-
-    # TODO: Load the model (+ experience replay buffer) if it exists
-    # if self.train or not os.path.isfile("my-saved-model.pt"):
-    #     self.logger.info("Setting up model from scratch.")
-    #     weights = np.random.rand(len(ACTIONS))
-    #     self.model = weights / weights.sum()
-    # else:
-    #     self.logger.info("Loading model from saved state.")
-    #     with open("my-saved-model.pt", "rb") as file:
-    #         self.model = pickle.load(file)
 
 
 def act(self, game_state: dict) -> str:
