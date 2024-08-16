@@ -104,6 +104,15 @@ class GenericWorld:
 
     def build_arena(self) -> Tuple[np.array, List[Coin], List[Agent]]:
         raise NotImplementedError()
+    
+    def change_world_seed(self, seed):
+        """ MANUALLY ADDED: Change the seed of the world's random number generator.
+
+        Args:
+            seed: The new seed to set.
+        """
+        self.args.seed = seed
+        self.rng = np.random.default_rng(seed)
 
     def add_agent(self, agent_dir, name, train=False):
         assert len(self.agents) < s.MAX_AGENTS
@@ -406,6 +415,7 @@ class BombeRLeWorld(GenericWorld):
             'bombs': [bomb.get_state() for bomb in self.bombs],
             'coins': [coin.get_state() for coin in self.coins if coin.collectable],
             'user_input': self.user_input,
+            'change_world_seed': self.change_world_seed # MANUALLY ADDED
         }
 
         explosion_map = np.zeros(self.arena.shape)

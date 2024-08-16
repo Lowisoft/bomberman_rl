@@ -28,7 +28,8 @@ def setup(self) -> None:
         self.CONFIG = json.load(file)
 
     # Set the device to be used
-    self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    self.use_cuda = torch.cuda.is_available()
+    self.device = torch.device("cuda" if self.use_cuda else "cpu")
     print("Device:", self.device)
 
     # Initialize the local Q-network
@@ -63,7 +64,8 @@ def act(self, game_state: dict) -> str:
     action = "WAIT"
 
     # Select the action using an epsilon-greedy policy
-    if self.train and random.random() <= self.exploration_rate:
+    # NB: If the agent is not trained or if the agent is tested during training, the exploration is disabled
+    if self.train and not self.test_training and random.random() <= self.exploration_rate:
         # Return a random action
         action = action_index_to_str(random.randrange(self.CONFIG["ACTION_SIZE"]))
     else:

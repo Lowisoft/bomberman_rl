@@ -37,7 +37,7 @@ class ExperienceReplayBuffer(object):
             state (np.ndarray): The current state of the environment.
             action (str): The action taken in the state.
             reward (float): The reward received after taking the action.
-            next_state (Union[np.ndarray, None]): The next state of the environment. None if the game has ended.
+            next_state (Union[np.ndarray, None]): The next state of the environment. None if the round/game has ended by death of the agent.
         """
 
         # Add the experience to the buffer
