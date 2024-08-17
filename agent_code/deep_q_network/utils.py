@@ -1,7 +1,8 @@
+import os 
 import random
 import torch
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Union
 import settings as s
 
 def set_seed(seed: int, change_world_seed, use_cuda: bool = False) -> None:
@@ -193,6 +194,12 @@ def save_data(network, optimizer, buffer, exploration_rate: float, testing_best_
         "testing_best_average_score": testing_best_average_score,
         "training_steps": training_steps
     }
+
+    # Create the directory if it does not exist
+    directory = os.path.dirname(network_path)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
     # Save the network to a file
     with open(network_path, 'wb') as f:
         torch.save(network.state_dict(), f)
@@ -270,3 +277,61 @@ def move_optimizer_to_device(optimizer, device: torch.device) -> None:
                     subparam.data = subparam.data.to(device)
                     if subparam._grad is not None:
                         subparam._grad.data = subparam._grad.data.to(device)
+
+
+def distance(a: Tuple, b: Tuple) -> int:
+    """ Calculate the (Manhattan) distance between two points a and b in the grid.
+    Args:
+        a (Tuple): The first point.
+        b (Tuple): The second point.
+
+    Returns:
+        int: The (Manhattan) distance between the two points.
+    """
+
+    # Check if the points are the same
+    if a == b:
+        return 0
+
+    # Calculate the Manhattan distance between the two points
+    distance = abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+    # Note that two points with the same even x coordinate OR the same even y coordinate have an
+    # additional distance of 2 between them because of the walls between them, which must be circumvented.
+    if a[0] == b[0] and a[0] % 2 == 0 or a[1] == b[1] and a[1] % 2 == 0:
+        distance += 2
+
+    return distance
+
+
+def potential_of_state(state: Union[dict, None]) -> float:
+    """ Calculate the potential of the state.
+
+    Args:
+        state (Union[dict, None]): The state to calculate the potential of.
+
+    Returns:
+        float: The potential of the state.
+    """
+
+    # Check if the state is None
+    if state is None:
+        return 0.0
+
+    # Get the position of the agent
+    agent_position = state["self"][3]
+
+    nearest_coin_distance = None
+    # Loop over all coins
+    for coin in state["coins"]:
+        # Calculate the distance to the coin
+        distance_to_coin = distance(agent_position, coin)
+        # Update the nearest coin distance
+        # NB: Do not consider coins at the agent's position (which can happen in the initial state of the coin heaven scenario)
+        if (nearest_coin_distance == None or distance_to_coin < nearest_coin_distance) and distance_to_coin != 0:
+            nearest_coin_distance = distance_to_coin
+
+    if nearest_coin_distance is None:
+        return 0.0
+
+    return 1.2 ** (-nearest_coin_distance)

@@ -9,10 +9,7 @@ import settings as s
 from .model.experience_replay_buffer import ExperienceReplayBuffer
 from .model.network import Network
 from .callbacks import state_to_features
-from .utils import round_ended_but_not_dead, set_seed, unset_seed, save_data, load_training_data_and_buffer
-
-# Events
-PLACEHOLDER_EVENT = "PLACEHOLDER"
+from .utils import round_ended_but_not_dead, set_seed, unset_seed, save_data, load_training_data_and_buffer, potential_of_state
 
 
 def setup_training(self) -> None:
@@ -92,10 +89,10 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
 
     # Handle the step
     handle_step(self, 
-        state=state_to_features(old_game_state),
+        state=old_game_state,
         action=self_action, 
-        reward=reward_from_events(self, events=events),
-        next_state=state_to_features(new_game_state),
+        reward=get_reward(self, state=old_game_state, action=self_action, next_state=new_game_state, events=events),
+        next_state=new_game_state,
         score=new_game_state["self"][1],
         change_world_seed=new_game_state["change_world_seed"],
         is_end_of_round=round_ended_but_not_dead(self, game_state=new_game_state)
@@ -123,43 +120,61 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     #     Note that the downside of this fix is that the event SURVIVED_ROUND is not always handled and should therefore not be used
     if not round_ended_but_not_dead(self, game_state=last_game_state): 
         handle_step(self, 
-        state=state_to_features(last_game_state),
+        state=last_game_state,
         action=last_action,
-        reward=reward_from_events(self, events=events),
+        reward=get_reward(self, state=last_game_state, action=last_action, next_state=None, events=events),
         next_state=None,
         score=last_game_state["self"][1],
         change_world_seed=last_game_state["change_world_seed"],
         is_end_of_round=True)
 
 
-def reward_from_events(self, events: List[str]) -> int:
-    """
-    *This is not a required function, but an idea to structure your code.*
+def get_reward(self, state: dict, action: str, next_state: Union[dict, None], events: List[str]) -> int:
+    """ Compute the reward based on the changed states and the events that occurred.
 
-    Here you can modify the rewards your agent get so as to en/discourage
-    certain behavior.
+    Args:
+        state (dict): The state before the action was taken.
+        action (str): The action taken in the state.
+        next_state (Union[dict, None]): The state after the action was taken. None if the round/game has ended by death of the agent.
+        events (List[str]): The events that occurred when going from the state to the next state.
+
+    Returns:
+        int: The reward for the action taken in the state.
     """
+
+    # Define the rewards for the events
     game_rewards = {
         e.COIN_COLLECTED: 1,
         e.KILLED_OPPONENT: 5,
-        PLACEHOLDER_EVENT: -.1  # idea: the custom event is bad
+        e.INVALID_ACTION: -0.1,
+        e.WAITED: -0.1,
+        e.BOMB_DROPPED: -0.5,
+        e.GOT_KILLED: -len(state["coins"])/20 # Penalize the agent for dying by the number of coins left (normalized)
     }
+
+    # Compute the reward based on the events
     reward_sum = 0
     for event in events:
         if event in game_rewards:
             reward_sum += game_rewards[event]
-    self.logger.info(f"Awarded {reward_sum} for events {", ".join(events)}")
+
+    # Add reward shaping based on the potential of the state and the next state
+    reward_sum += self.CONFIG["DISCOUNT_RATE"] * potential_of_state(next_state) - potential_of_state(state)    
+
+    # Print the reward and the events
+    self.logger.info(f"Awarded {reward_sum} for potential difference and for events {", ".join(events)}")
+    
     return reward_sum
 
 
-def handle_step(self, state: np.ndarray, action: str, reward: float, next_state: Union[np.ndarray, None], score: int, change_world_seed, is_end_of_round: bool = False) -> None:
+def handle_step(self, state: dict, action: str, reward: float, next_state: Union[dict, None], score: int, change_world_seed, is_end_of_round: bool = False) -> None:
     """ Handle a training step in the environment.
 
     Args:
-        state (np.ndarray): The current state of the environment.
+        state (dict): The current state of the environment.
         action (str): The action taken in the state.
         reward (float): The reward received after taking the action.
-        next_state (Union[np.ndarray, None]): The next state of the environment. None if the round/game has ended by death of the agent.
+        next_state (Union[dict, None]): The next state of the environment. None if the round/game has ended by death of the agent.
         score (int): The score of the agent in the next state.
         change_world_seed (function): Function to change the seed of the world.
         is_end_of_round (bool, optional): Whether the round/game has ended. Defaults to False.
@@ -204,7 +219,7 @@ def handle_step(self, state: np.ndarray, action: str, reward: float, next_state:
     # Otherwise the agent is in training mode
     else:
         # Store the experience in the buffer
-        self.buffer.push(state=state, action=action, reward=reward, next_state=next_state)
+        self.buffer.push(state=state_to_features(state), action=action, reward=reward, next_state=state_to_features(next_state))
         # Update the exploration rate
         self.exploration_rate = update_exploration_rate(self, self.exploration_rate)
         # Increment the total number of steps

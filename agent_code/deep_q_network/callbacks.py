@@ -4,6 +4,7 @@ import torch
 import random
 import numpy as np
 import settings as s
+from typing import Union
 from .utils import action_index_to_str, crop_channel, get_bomb_blast_coords, load_network
 from .model.network import Network
 
@@ -83,7 +84,7 @@ def act(self, game_state: dict) -> str:
     return action
 
 
-def state_to_features(game_state: dict) -> np.array:
+def state_to_features(game_state: Union[dict, None]) -> np.array:
     """
     *This is not a required function, but an idea to structure your code.*
 
@@ -99,7 +100,7 @@ def state_to_features(game_state: dict) -> np.array:
     """
     # This is the dict before the game begins and after it ends
     if game_state is None:
-       logger.debug("ERROR: Cannot convert None game state to features!")
+        return None
 
     # NB: Define the border_size to crop the game board by excluding the walls at the borders
     border_size = 1
