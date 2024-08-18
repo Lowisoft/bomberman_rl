@@ -1,9 +1,11 @@
-from collections import namedtuple, deque
 import os
-from typing import Union, List
 import torch
-import torch.nn.functional as F
+import wandb
 import numpy as np
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from collections import namedtuple, deque
+from typing import Union, List
 import events as e
 import settings as s
 from .model.experience_replay_buffer import ExperienceReplayBuffer
@@ -29,15 +31,16 @@ def setup_training(self) -> None:
     self.buffer = ExperienceReplayBuffer(buffer_capacity=self.CONFIG["BUFFER_CAPACITY"], device=self.device)
     # Initalize the optimizer
     self.optimizer = torch.optim.Adam(self.local_q_network.parameters(), lr=self.CONFIG["LEARNING_RATE"])
+    # Initialize the loss function
+    self.loss_function = torch.nn.MSELoss()
     
-    # Check if the training data and the buffer exist and load them if they do
-    if os.path.isfile(self.CONFIG["TRAINING_DATA_PATH"]) and os.path.isfile(self.CONFIG["BUFFER_PATH"]):
-        print("Loading training data and buffer from saved state.")
-        self.exploration_rate, self.testing_best_average_score, self.training_steps = load_training_data_and_buffer(
+    # Check if we can start from a saved state
+    if "START_FROM" in self.CONFIG and self.CONFIG["START_FROM"] and os.path.exists(f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/"):
+        print(f"Loading {self.CONFIG["START_FROM"]} training data and buffer from saved state.")
+        self.exploration_rate, self.test_best_avg_score, self.training_steps = load_training_data_and_buffer(
             optimizer=self.optimizer, 
             buffer=self.buffer, 
-            training_data_path=self.CONFIG["TRAINING_DATA_PATH"], 
-            buffer_path=self.CONFIG["BUFFER_PATH"],
+            path=f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/", 
             device=self.device)
     # Otherwise, set up the model from scratch
     else:
@@ -47,20 +50,46 @@ def setup_training(self) -> None:
         # Initialize the number of steps performed in training (exluding testing)
         self.training_steps = 0
         # Initialize the best average score achieved in the testing phase
-        self.testing_best_average_score = 0
+        self.test_best_avg_score = 0
 
+    # Initialize the reward per round/game during training
+    self.training_reward_of_round = 0
     # Initialize whether the agent is tested during training on a set of rounds/games with a fixed seed 
     self.test_training = False
     # Initialize whether the testing during training should be started in the next game/round
     self.start_test_training_next_round = False
     # Initialize the number of rounds/games performed in a testing phase during training (reset to 0 after each testing phase)
-    self.testing_rounds = 0
+    self.test_rounds = 0
     # Initialize the total reward in the testing phase
-    self.testing_total_reward = 0
+    self.test_total_reward = 0
     # Initialize the total score in the testing phase
-    self.testing_total_score = 0
+    self.test_total_score = 0
+    # Initialize the total steps in the testing phase
+    self.test_total_steps = 0
     # Initialize the testing seed (so that each testing phase is is run on the same set of rounds/games)
-    self.testing_seed = 1234
+    self.test_seed = self.CONFIG["TEST_SEED"]
+
+    # Define the Berlin timezone
+    berlin_tz = ZoneInfo('Europe/Berlin')
+    # Get the current UTC time and convert it to Berlin timezone
+    now_utc = datetime.now(tz=ZoneInfo('UTC'))
+    now_berlin = now_utc.astimezone(berlin_tz)
+
+    # Create a unique name for the run
+    self.run_name = f"{self.CONFIG['PROJECT_NAME_SHORT']}_{now_berlin.strftime("%y%m%d%H%M%S")}"
+
+    # Initialize the wandb run
+    self.run = wandb.init(
+        project=self.CONFIG["PROJECT_NAME"],  
+        name=self.run_name,
+        config=self.CONFIG
+    )
+
+    # Tell wandb to watch the model
+    wandb.watch(self.local_q_network, self.loss_function, log="all", log_freq=10)
+
+    # Store a reference to the W&B api
+    self.wandbAPI = wandb.Api()
 
 
 def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_state: dict, events: List[str]) -> None:
@@ -149,7 +178,8 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         e.INVALID_ACTION: -0.1,
         e.WAITED: -0.1,
         e.BOMB_DROPPED: -0.5,
-        e.GOT_KILLED: -len(state["coins"])/20 # Penalize the agent for dying by the number of coins left (normalized)
+        # Penalize the agent for dying by the number of coins left (normalized)
+        e.GOT_KILLED: -len(state["coins"])/s.SCENARIOS["coin-heaven"]["COIN_COUNT"] 
     }
 
     # Compute the reward based on the events
@@ -161,7 +191,7 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
     # Add reward shaping based on the potential of the state and the next state
     reward_sum += self.CONFIG["DISCOUNT_RATE"] * potential_of_state(next_state) - potential_of_state(state)    
 
-    # Print the reward and the events
+    # Log the reward and the events
     self.logger.info(f"Awarded {reward_sum} for potential difference and for events {", ".join(events)}")
     
     return reward_sum
@@ -183,39 +213,53 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
     # Check if the agent is tested during training
     if self.test_training:
         # Add the reward to the total reward
-        self.testing_total_reward += reward
+        self.test_total_reward += reward
         # Check if the round/game has ended
         if is_end_of_round:
             # Increment the number of testing rounds
-            self.testing_rounds += 1
+            self.test_rounds += 1
             # Add the score to the total score
-            self.testing_total_score += score
+            self.test_total_score += score
+            self.test_total_steps += state["step"]
             # Check if the testing phase is over
-            if self.testing_rounds == self.CONFIG["ROUNDS_PER_TEST"]:
+            if self.test_rounds == self.CONFIG["ROUNDS_PER_TEST"]:
                 self.test_training = False
                 # Unset the seed for the testing phase
                 unset_seed(change_world_seed, self.use_cuda)
-                average_reward = self.testing_total_reward / self.CONFIG["ROUNDS_PER_TEST"]
-                average_score = self.testing_total_score / self.CONFIG["ROUNDS_PER_TEST"]
-                # Print the results of the testing phase
-                print("Average reward:", average_reward)
-                print("Average score:", average_score)
+                # Compute the average reward, score, and steps in the testing phase
+                test_avg_reward = self.test_total_reward / self.CONFIG["ROUNDS_PER_TEST"]
+                test_avg_score = self.test_total_score / self.CONFIG["ROUNDS_PER_TEST"]
+                test_avg_steps = self.test_total_steps / self.CONFIG["ROUNDS_PER_TEST"]
+                # Log the results of the testing phase
+                wandb.log({ "test_avg_reward": test_avg_reward, "test_avg_score": test_avg_score, "test_avg_steps": test_avg_steps}, step=self.training_steps)
                 # Check if the average score is higher than the best score
-                if average_score > self.testing_best_average_score:
+                is_test_best_avg_score = False
+                if test_avg_score > self.test_best_avg_score:
                     # Update the best score
-                    self.testing_best_average_score = average_score
-                    # Save the model
-                    print("Save the model") 
-                    save_data(
-                        network=self.local_q_network, 
-                        optimizer=self.optimizer, 
-                        buffer=self.buffer, 
-                        exploration_rate=self.exploration_rate,
-                        testing_best_average_score=self.testing_best_average_score, 
-                        training_steps=self.training_steps, 
-                        network_path=self.CONFIG["NETWORK_PATH"],
-                        training_data_path=self.CONFIG["TRAINING_DATA_PATH"], 
-                        buffer_path=self.CONFIG["BUFFER_PATH"])
+                    self.test_best_avg_score = test_avg_score
+                    is_test_best_avg_score = True
+                # Create the metadata
+                metadata = {
+                    "test_avg_reward": test_avg_reward,
+                    "test_avg_score": test_avg_score,
+                    "is_test_best_avg_score": is_test_best_avg_score,
+                    "exploration_rate": self.exploration_rate,
+                    "training_steps": self.training_steps,
+                    "config": self.CONFIG
+                }
+                # Save the model
+                print("Save the model") 
+                save_data(
+                    project_name=self.CONFIG["PROJECT_NAME"],
+                    run=self.run,
+                    run_name=self.run_name,
+                    wandbAPI=self.wandbAPI,
+                    metadata=metadata,
+                    network=self.local_q_network, 
+                    optimizer=self.optimizer, 
+                    buffer=self.buffer, 
+                    test_best_avg_score=self.test_best_avg_score,
+                    path=self.CONFIG["PATH"])
     # Otherwise the agent is in training mode
     else:
         # Store the experience in the buffer
@@ -224,6 +268,8 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
         self.exploration_rate = update_exploration_rate(self, self.exploration_rate)
         # Increment the total number of steps
         self.training_steps += 1
+        # Increment the reward of the round/game during training
+        self.training_reward_of_round += reward
         # Check if the agent should be trained and if the buffer has enough experiences to sample a batch
         if self.training_steps % self.CONFIG["TRAINING_FREQUENCY"] == 0 and len(self.buffer) > self.CONFIG["BUFFER_MIN_SIZE"]:
             # Train the model
@@ -235,20 +281,33 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
         if self.training_steps % self.CONFIG["TESTING_FREQUENCY"] == 0:
             # Store that the testing phase is started in the next game/round
             self.start_test_training_next_round = True
-        # Check if the testing phase should be started in the next game/round
-        if self.start_test_training_next_round and is_end_of_round:
-            # Reset the flag
-            self.start_test_training_next_round = False
-            # Set the agent to testing mode
-            self.test_training = True
-            # Reset the number of testing rounds
-            self.testing_rounds = 0
-            # Reset the total reward in the testing phase
-            self.testing_total_reward = 0
-            # Reset the total score in the testing phase
-            self.testing_total_score = 0
-            # Set the seed for the testing phase
-            set_seed(self.testing_seed, change_world_seed, self.use_cuda)
+        # Check if the round/game has ended
+        if is_end_of_round:
+            # Log the stats of the round/game during training
+            wandb.log({ 
+                "training_reward_of_round": self.training_reward_of_round,
+                "training_score_of_round": score, 
+                "training_steps_of_round": state["step"],
+                "exploration_rate": self.exploration_rate
+                }, step=self.training_steps)
+            # Reset the reward of the round/game during training
+            self.training_reward_of_round = 0
+            # Check if the testing phase should be started in the next game/round
+            if self.start_test_training_next_round:
+                # Reset the flag
+                self.start_test_training_next_round = False
+                # Set the agent to testing mode
+                self.test_training = True
+                # Reset the number of testing rounds
+                self.test_rounds = 0
+                # Reset the total reward in the testing phase
+                self.test_total_reward = 0
+                # Reset the total score in the testing phase
+                self.test_total_score = 0
+                # Reset the total steps in the testing phase
+                self.test_total_steps = 0
+                # Set the seed for the testing phase
+                set_seed(self.test_seed, change_world_seed, self.use_cuda)
 
 
 def update_exploration_rate(self, exploration_rate: float) -> float:
@@ -284,12 +343,13 @@ def train_network(self) -> None:
     # Calculate the target Q-values
     target_q_values = rewards + self.CONFIG["DISCOUNT_RATE"] * next_q_values_max * (1 - dones)
     # Compute the MSE loss
-    loss = F.mse_loss(q_values, target_q_values)
+    loss = self.loss_function(q_values, target_q_values)
     # Reset the gradients
     self.optimizer.zero_grad()
     # Peform the backpropagation
     loss.backward()
-    print(loss.item())
+    # Log the loss
+    wandb.log({"loss": loss.item()}, step=self.training_steps)
     # Update the weights
     self.optimizer.step()
     # Set the local network back to evaluation mode

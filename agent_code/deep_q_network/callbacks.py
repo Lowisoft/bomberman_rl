@@ -35,10 +35,10 @@ def setup(self) -> None:
     # Initialize the local Q-network
     self.local_q_network = Network(channel_size=self.CONFIG["CHANNEL_SIZE"], column_size=(s.COLS - 2), row_size=(s.ROWS - 2), action_size=self.CONFIG["ACTION_SIZE"]).to(self.device)
 
-    # Check if the network exists and load it if it does
-    if os.path.isfile(self.CONFIG["NETWORK_PATH"]):
-        print("Loading network from saved state.")
-        load_network(network=self.local_q_network, network_path=self.CONFIG["NETWORK_PATH"], device=self.device)
+    # Check if we can start from a saved state
+    if "START_FROM" in self.CONFIG and self.CONFIG["START_FROM"] and os.path.exists(f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/"):
+        print(f"Loading {self.CONFIG["START_FROM"]} network from saved state.")
+        load_network(network=self.local_q_network, path=f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/", device=self.device)
     # Otherwise, set up the model from scratch
     else:
         print("Setting up network from scratch.")

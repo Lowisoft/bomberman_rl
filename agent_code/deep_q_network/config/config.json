@@ -1,5 +1,8 @@
 {
-    "NAME": "deep_q_network",
+    "PROJECT_NAME": "deep_q_network",
+    "PROJECT_NAME_SHORT": "DQN",
+    "PATH": "./model/data/",
+    "START_FROM": "best",
     "NETWORK_PATH": "./model/data/network.pth",
     "TRAINING_DATA_PATH": "./model/data/training_data.pth",
     "BUFFER_PATH": "./model/data/experience_replay_buffer.pkl",
@@ -17,5 +20,6 @@
     "TRAINING_FREQUENCY": 100,
     "TARGET_UPDATE_FREQUENCY": 5000,
     "TESTING_FREQUENCY": 40000,
-    "ROUNDS_PER_TEST": 30
+    "ROUNDS_PER_TEST": 30,
+    "TEST_SEED": 1234
 }

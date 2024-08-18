@@ -1,6 +1,7 @@
 import os 
 import random
 import torch
+import wandb
 import numpy as np
 from typing import Tuple, Union
 import settings as s
@@ -172,33 +173,42 @@ def round_ended_but_not_dead(self, game_state: dict) -> bool:
     return False
 
 
-def save_data(network, optimizer, buffer, exploration_rate: float, testing_best_average_score: float, training_steps: int, network_path: str, training_data_path: str, buffer_path: str) -> None:
+def save_data(project_name: str, run, run_name: str, wandbAPI, metadata: dict, network, optimizer, test_best_avg_score: float, buffer, path: str) -> None:
     """ Save the data.
 
     Args:
+        project_name (str): The name of the project.
+        run: The W&B run.
+        run_name (str): The name of the run.
+        wandbAPI: The W&B API.
+        metadata (dict): The metadata to save.
         network (Network): The deep Q-network.
         optimizer: The optimizer of the network.
         buffer (ExperienceReplayBuffer): The experience replay buffer.
-        exploration_rate (float): The exploration rate.
-        testing_best_average_score (float): The best average score achieved during testing.
-        training_steps (int): The number of training steps.
-        network_path (str): The path to save the network.
-        training_data_path (str): The path to save the training data.
-        buffer_path (str): The path to save the buffer.
+        test_best_avg_score (float): The best average score achieved during testing.
+        path (str): The path to save the data.
     """
 
     # Create a dictionary to store the training_data
     training_data = {
         "optimizer": optimizer.state_dict(),
-        "exploration_rate": exploration_rate,
-        "testing_best_average_score": testing_best_average_score,
-        "training_steps": training_steps
+        "exploration_rate": metadata["exploration_rate"],
+        "test_best_avg_score": test_best_avg_score,
+        "training_steps": metadata["training_steps"]
     }
 
+    # Build the path
+    # NB: The path is either "best/" or "last/" depending on whether the best average score was achieved during testing
+    path = os.path.join(path, "best/" if metadata["is_test_best_avg_score"] else "last/")
+
     # Create the directory if it does not exist
-    directory = os.path.dirname(network_path)
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    # Define the paths
+    network_path = os.path.join(path, "network.pth")
+    training_data_path = os.path.join(path, "training_data.pth")
+    buffer_path = os.path.join(path, "experience_replay_buffer.pkl")
 
     # Save the network to a file
     with open(network_path, 'wb') as f:
@@ -209,33 +219,69 @@ def save_data(network, optimizer, buffer, exploration_rate: float, testing_best_
     # Save the buffer to a file
     buffer.save(buffer_path)
 
+    # Create a new artifact
+    # NB: The name of the artifact is either "best" or "last" depending on whether the best average score was achieved during testing
+    artifact_name = f"{run_name}_{"best" if metadata["is_test_best_avg_score"] else "last"}"
+    artifact = wandb.Artifact(name=artifact_name, type="model", metadata=metadata)
+    artifact.add_file(network_path)
+    artifact.add_file(training_data_path)
+    artifact.add_file(buffer_path)
 
-def load_network(network, network_path: str, device: torch.device) -> None:
+    # Log the artifact to W&B
+    run.log_artifact(artifact)
+    try:
+        # Get all versions of the artifact
+        artifact_versions = wandbAPI.artifacts("model", f"{project_name}/{artifact_name}")
+        # Keep 3 best versions and the last version
+        keep_number = 3 if metadata["is_test_best_avg_score"] else 1
+        
+        # Check if there are versions to delete
+        if len(artifact_versions) > keep_number:
+            if metadata["is_test_best_avg_score"]:
+                # Sort artifact versions by test_avg_score, highest first
+                artifact_versions = sorted(artifact_versions, key=lambda art: art.metadata["test_avg_score"], reverse=True)
+            else:
+                # Sort artifact versions by creation time, latest first
+                artifact_versions = sorted(artifact_versions, key=lambda art: art.created_at, reverse=True)
+
+            # Delete old/bad artifact versions
+            for art in artifact_versions[keep_number:]:
+                art.delete()
+    except Exception as e:
+        print("Error in deleting old artifact versions")
+        print(e)
+
+
+def load_network(network, path: str, device: torch.device) -> None:
     """ Load the network.
 
     Args:
         network (Network): The network to load the state_dict into.
-        network_path (str): The path to the network.
+        path (str): The path to the network.
         device (torch.device): The device to load the network on.
     """
+    network_path = os.path.join(path, "network.pth")
     # Load the network
     with open(network_path, 'rb') as f:
         network.load_state_dict(torch.load(f, map_location=device, weights_only=True))
 
 
-def load_training_data_and_buffer(optimizer, buffer, training_data_path: str, buffer_path:str, device: torch.device) -> Tuple[float, float, int]:
+def load_training_data_and_buffer(optimizer, buffer, path: str, device: torch.device) -> Tuple[float, float, int]:
     """ Load the training data and the buffer.
 
     Args:
         optimizer: The optimizer of the network.
         buffer (ExperienceReplayBuffer): The experience replay buffer.
-        training_data_path (str): The path to the training data.
-        buffer_path (str): The path to the buffer.
+        path (str): The path to the training data and the buffer.
         device (torch.device): The device to load the buffer on
 
     Returns:
         Tuple[float, float, int]: The exploration rate, the best average score achieved during testing and the number of training steps.
     """
+
+    # Define the paths
+    training_data_path = os.path.join(path, "training_data.pth")
+    buffer_path = os.path.join(path, "experience_replay_buffer.pkl")
 
     training_data = None
     # Load the training data
@@ -248,13 +294,13 @@ def load_training_data_and_buffer(optimizer, buffer, training_data_path: str, bu
     move_optimizer_to_device(optimizer, device)
 
     exploration_rate = training_data['exploration_rate']
-    testing_best_average_score = training_data['testing_best_average_score']
+    test_best_avg_score = training_data['test_best_avg_score']
     training_steps = training_data['training_steps']
 
     # Load the buffer
     buffer.load(buffer_path)
     
-    return exploration_rate, testing_best_average_score, training_steps
+    return exploration_rate, test_best_avg_score, training_steps
 
 
 def move_optimizer_to_device(optimizer, device: torch.device) -> None:
