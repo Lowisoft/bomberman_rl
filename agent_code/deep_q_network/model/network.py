@@ -4,7 +4,7 @@ import numpy as np
 
 
 class Network(nn.Module):
-    def __init__(self, channel_size: int, column_size: int, row_size: int, action_size: int) -> None:
+    def __init__(self, channel_size: int, column_size: int, row_size: int, action_size: int, hidden_layer_size: int) -> None:
         """ Initializes the deep Q-network.
 
         Args:
@@ -30,12 +30,12 @@ class Network(nn.Module):
             # Output: (batch_size, 16 * (column_size - 2) * (row_size - 2))
             nn.Flatten(),
             # Input: (batch_size, 6 * (column_size - 2) * (row_size - 2))
-            # Output: (batch_size, 128)
-            nn.Linear(16 * (column_size - 2) * (row_size - 2), 128),
+            # Output: (batch_size, hidden_layer_size)
+            nn.Linear(16 * (column_size - 2) * (row_size - 2), hidden_layer_size),
             nn.ReLU(),
-            # Input: (batch_size, 128)
+            # Input: (batch_size, hidden_layer_size)
             # Output: (batch_size, action_size)
-            nn.Linear(128, action_size)
+            nn.Linear(hidden_layer_size, action_size)
         )
 
 

@@ -22,7 +22,13 @@ def setup_training(self) -> None:
     """
 
     # Initialize the target Q-network
-    self.target_q_network = Network(channel_size=self.CONFIG["CHANNEL_SIZE"], column_size=(s.COLS - 2), row_size=(s.ROWS - 2), action_size=self.CONFIG["ACTION_SIZE"]).to(self.device)
+    self.target_q_network = Network(
+        channel_size=self.CONFIG["CHANNEL_SIZE"],
+        column_size=(s.COLS - 2), 
+        row_size=(s.ROWS - 2), 
+        action_size=self.CONFIG["ACTION_SIZE"],
+        hidden_layer_size=self.CONFIG["HIDDEN_LAYER_SIZE"]
+        ).to(self.device)
     # Load the weights of the local Q-network to the target Q-network
     self.target_q_network.load_state_dict(self.local_q_network.state_dict())
     # Initialize the experience replay memory

@@ -12,6 +12,8 @@ parameters:
     values: [30000, 50000, 70000]
   BUFFER_MIN_SIZE:
     values: [1000, 10000, 30000]
+  HIDDEN_LAYER_SIZE:
+    values: [128, 256]
   EXPLORATION_RATE_DECAY:
     min: 0.999999
     max: 0.9999997

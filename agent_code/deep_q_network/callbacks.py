@@ -55,7 +55,13 @@ def setup(self) -> None:
     print("Device:", self.device)
 
     # Initialize the local Q-network
-    self.local_q_network = Network(channel_size=self.CONFIG["CHANNEL_SIZE"], column_size=(s.COLS - 2), row_size=(s.ROWS - 2), action_size=self.CONFIG["ACTION_SIZE"]).to(self.device)
+    self.local_q_network = Network(
+        channel_size=self.CONFIG["CHANNEL_SIZE"], 
+        column_size=(s.COLS - 2), 
+        row_size=(s.ROWS - 2), 
+        action_size=self.CONFIG["ACTION_SIZE"], 
+        hidden_layer_size=self.CONFIG["HIDDEN_LAYER_SIZE"]
+        ).to(self.device)
 
     # Check if we can start from a saved state
     if "START_FROM" in self.CONFIG and self.CONFIG["START_FROM"] in ["best", "last"] and os.path.exists(f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/"):
