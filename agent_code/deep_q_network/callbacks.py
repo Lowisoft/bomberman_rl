@@ -1,8 +1,11 @@
 import os
-import json
+import yaml
 import torch
 import random
 import numpy as np
+import wandb # ONLY FOR TRAINING
+from datetime import datetime # ONLY FOR TRAINING
+from zoneinfo import ZoneInfo # ONLY FOR TRAINING
 import settings as s
 from typing import Union
 from .utils import action_index_to_str, crop_channel, get_bomb_blast_coords, load_network
@@ -24,8 +27,27 @@ def setup(self) -> None:
     """
 
     # Load the configuration
-    with open("./config/config.json", "r") as file:
-        self.CONFIG = json.load(file)
+    with open("./config/base_config.yaml", "r") as file:
+        self.CONFIG = yaml.safe_load(file)
+
+    if self.train:
+        # Define the Berlin timezone
+        berlin_tz = ZoneInfo('Europe/Berlin')
+        # Get the current UTC time and convert it to Berlin timezone
+        now_utc = datetime.now(tz=ZoneInfo('UTC'))
+        now_berlin = now_utc.astimezone(berlin_tz)
+        
+        # Create a unique name for the run
+        self.run_name = f"{self.CONFIG['PROJECT_NAME_SHORT']}_{now_berlin.strftime("%y%m%d%H%M%S")}"
+
+        # Initialize the wandb run
+        self.run = wandb.init(
+            project=self.CONFIG["PROJECT_NAME"],  
+            name=self.run_name,
+            config=self.CONFIG # Gets automatically overwritten by config of the sweep (if available)
+        )
+        # Make sure the same configuration is used for the agent and the wandb run
+        self.CONFIG = self.run.config
 
     # Set the device to be used
     self.use_cuda = torch.cuda.is_available()
@@ -36,7 +58,7 @@ def setup(self) -> None:
     self.local_q_network = Network(channel_size=self.CONFIG["CHANNEL_SIZE"], column_size=(s.COLS - 2), row_size=(s.ROWS - 2), action_size=self.CONFIG["ACTION_SIZE"]).to(self.device)
 
     # Check if we can start from a saved state
-    if "START_FROM" in self.CONFIG and self.CONFIG["START_FROM"] and os.path.exists(f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/"):
+    if "START_FROM" in self.CONFIG and self.CONFIG["START_FROM"] in ["best", "last"] and os.path.exists(f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/"):
         print(f"Loading {self.CONFIG["START_FROM"]} network from saved state.")
         load_network(network=self.local_q_network, path=f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/", device=self.device)
     # Otherwise, set up the model from scratch

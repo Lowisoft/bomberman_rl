@@ -2,8 +2,6 @@ import os
 import torch
 import wandb
 import numpy as np
-from datetime import datetime
-from zoneinfo import ZoneInfo
 from collections import namedtuple, deque
 from typing import Union, List
 import events as e
@@ -30,12 +28,20 @@ def setup_training(self) -> None:
     # Initialize the experience replay memory
     self.buffer = ExperienceReplayBuffer(buffer_capacity=self.CONFIG["BUFFER_CAPACITY"], device=self.device)
     # Initalize the optimizer
-    self.optimizer = torch.optim.Adam(self.local_q_network.parameters(), lr=self.CONFIG["LEARNING_RATE"])
+    if self.CONFIG["OPTIMIZER"] == "Adam":
+        self.optimizer = torch.optim.Adam(self.local_q_network.parameters(), lr=self.CONFIG["LEARNING_RATE"])
+    elif self.CONFIG["OPTIMIZER"] == "SGD":
+        self.optimizer = torch.optim.SGD(self.local_q_network.parameters(), lr=self.CONFIG["LEARNING_RATE"])
+    elif self.CONFIG["OPTIMIZER"] == "RMSprop":
+        self.optimizer = torch.optim.RMSprop(self.local_q_network.parameters(), lr=self.CONFIG["LEARNING_RATE"])
+    else:
+        raise ValueError(f"Optimizer {self.CONFIG["OPTIMIZER"]} not supported")
+
     # Initialize the loss function
     self.loss_function = torch.nn.MSELoss()
     
     # Check if we can start from a saved state
-    if "START_FROM" in self.CONFIG and self.CONFIG["START_FROM"] and os.path.exists(f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/"):
+    if "START_FROM" in self.CONFIG and self.CONFIG["START_FROM"] in ["best", "last"] and os.path.exists(f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/"):
         print(f"Loading {self.CONFIG["START_FROM"]} training data and buffer from saved state.")
         self.exploration_rate, self.test_best_avg_score, self.training_steps = load_training_data_and_buffer(
             optimizer=self.optimizer, 
@@ -68,22 +74,6 @@ def setup_training(self) -> None:
     self.test_total_steps = 0
     # Initialize the testing seed (so that each testing phase is is run on the same set of rounds/games)
     self.test_seed = self.CONFIG["TEST_SEED"]
-
-    # Define the Berlin timezone
-    berlin_tz = ZoneInfo('Europe/Berlin')
-    # Get the current UTC time and convert it to Berlin timezone
-    now_utc = datetime.now(tz=ZoneInfo('UTC'))
-    now_berlin = now_utc.astimezone(berlin_tz)
-
-    # Create a unique name for the run
-    self.run_name = f"{self.CONFIG['PROJECT_NAME_SHORT']}_{now_berlin.strftime("%y%m%d%H%M%S")}"
-
-    # Initialize the wandb run
-    self.run = wandb.init(
-        project=self.CONFIG["PROJECT_NAME"],  
-        name=self.run_name,
-        config=self.CONFIG
-    )
 
     # Tell wandb to watch the model
     wandb.watch(self.local_q_network, self.loss_function, log="all", log_freq=10)
