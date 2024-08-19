@@ -33,6 +33,6 @@ command:
   - play
   - --agents=deep_q_network
   - --train=1
-  - --n-rounds=5000
+  - --n-rounds=100000
   - --scenario=coin-heaven
   - --no-gui
