@@ -194,7 +194,8 @@ def save_data(project_name: str, run, run_name: str, wandbAPI, metadata: dict, n
         "optimizer": optimizer.state_dict(),
         "exploration_rate": metadata["exploration_rate"],
         "test_best_avg_score": test_best_avg_score,
-        "training_steps": metadata["training_steps"]
+        "training_steps": metadata["training_steps"],
+        "training_rounds": metadata["training_rounds"]
     }
 
     # Build the path
@@ -208,7 +209,7 @@ def save_data(project_name: str, run, run_name: str, wandbAPI, metadata: dict, n
     # Define the paths
     network_path = os.path.join(path, "network.pth")
     training_data_path = os.path.join(path, "training_data.pth")
-    buffer_path = os.path.join(path, "experience_replay_buffer.pkl")
+    #buffer_path = os.path.join(path, "experience_replay_buffer.pkl")
 
     # Save the network to a file
     with open(network_path, 'wb') as f:
@@ -217,7 +218,7 @@ def save_data(project_name: str, run, run_name: str, wandbAPI, metadata: dict, n
     with open(training_data_path, 'wb') as f:
         torch.save(training_data, f)
     # Save the buffer to a file
-    buffer.save(buffer_path)
+    #buffer.save(buffer_path)
 
     # Create a new artifact
     # NB: The name of the artifact is either "best" or "last" depending on whether the best average score was achieved during testing
@@ -225,7 +226,7 @@ def save_data(project_name: str, run, run_name: str, wandbAPI, metadata: dict, n
     artifact = wandb.Artifact(name=artifact_name, type="model", metadata=metadata)
     artifact.add_file(network_path)
     artifact.add_file(training_data_path)
-    artifact.add_file(buffer_path)
+    #artifact.add_file(buffer_path)
 
     # Log the artifact to W&B
     run.log_artifact(artifact)
@@ -266,22 +267,22 @@ def load_network(network, path: str, device: torch.device) -> None:
         network.load_state_dict(torch.load(f, map_location=device, weights_only=True))
 
 
-def load_training_data_and_buffer(optimizer, buffer, path: str, device: torch.device) -> Tuple[float, float, int]:
+def load_training_data(optimizer, buffer, path: str, device: torch.device) -> Tuple[float, float, int, int]:
     """ Load the training data and the buffer.
 
     Args:
         optimizer: The optimizer of the network.
         buffer (ExperienceReplayBuffer): The experience replay buffer.
         path (str): The path to the training data and the buffer.
-        device (torch.device): The device to load the buffer on
+        device (torch.device): The device to load the data on
 
     Returns:
-        Tuple[float, float, int]: The exploration rate, the best average score achieved during testing and the number of training steps.
+        Tuple[float, float, int, int]: The exploration rate, the best average score achieved during testing, the number of training steps and the number of training rounds.
     """
 
     # Define the paths
     training_data_path = os.path.join(path, "training_data.pth")
-    buffer_path = os.path.join(path, "experience_replay_buffer.pkl")
+    #buffer_path = os.path.join(path, "experience_replay_buffer.pkl")
 
     training_data = None
     # Load the training data
@@ -296,11 +297,12 @@ def load_training_data_and_buffer(optimizer, buffer, path: str, device: torch.de
     exploration_rate = training_data['exploration_rate']
     test_best_avg_score = training_data['test_best_avg_score']
     training_steps = training_data['training_steps']
+    training_rounds = training_data['training_rounds']
 
     # Load the buffer
-    buffer.load(buffer_path)
+    #buffer.load(buffer_path)
     
-    return exploration_rate, test_best_avg_score, training_steps
+    return exploration_rate, test_best_avg_score, training_steps, training_rounds
 
 
 def move_optimizer_to_device(optimizer, device: torch.device) -> None:

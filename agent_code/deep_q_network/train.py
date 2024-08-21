@@ -9,7 +9,7 @@ import settings as s
 from .model.experience_replay_buffer import ExperienceReplayBuffer
 from .model.network import Network
 from .callbacks import state_to_features
-from .utils import round_ended_but_not_dead, set_seed, unset_seed, save_data, load_training_data_and_buffer, potential_of_state
+from .utils import round_ended_but_not_dead, set_seed, unset_seed, save_data, load_training_data, potential_of_state
 
 
 def setup_training(self) -> None:
@@ -49,7 +49,7 @@ def setup_training(self) -> None:
     # Check if we can start from a saved state
     if "START_FROM" in self.CONFIG and self.CONFIG["START_FROM"] in ["best", "last"] and os.path.exists(f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/"):
         print(f"Loading {self.CONFIG["START_FROM"]} training data and buffer from saved state.")
-        self.exploration_rate, self.test_best_avg_score, self.training_steps = load_training_data_and_buffer(
+        self.exploration_rate, self.test_best_avg_score, self.training_steps, self.training_rounds = load_training_data(
             optimizer=self.optimizer, 
             buffer=self.buffer, 
             path=f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/", 
@@ -61,6 +61,8 @@ def setup_training(self) -> None:
         self.exploration_rate = self.CONFIG["EXPLORATION_RATE_START"]
         # Initialize the number of steps performed in training (exluding testing)
         self.training_steps = 0
+        # Initialize the number of rounds performed in training (exluding testing)
+        self.training_rounds = 0
         # Initialize the best average score achieved in the testing phase
         self.test_best_avg_score = 0
 
@@ -227,7 +229,7 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
                 test_avg_score = self.test_total_score / self.CONFIG["ROUNDS_PER_TEST"]
                 test_avg_steps = self.test_total_steps / self.CONFIG["ROUNDS_PER_TEST"]
                 # Log the results of the testing phase
-                wandb.log({ "test_avg_reward": test_avg_reward, "test_avg_score": test_avg_score, "test_avg_steps": test_avg_steps}, step=self.training_steps)
+                wandb.log({ "test_avg_reward": test_avg_reward, "test_avg_score": test_avg_score, "test_avg_steps": test_avg_steps }, step=self.training_steps)
                 # Check if the average score is higher than the best score
                 is_test_best_avg_score = False
                 if test_avg_score > self.test_best_avg_score:
@@ -241,6 +243,7 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
                     "is_test_best_avg_score": is_test_best_avg_score,
                     "exploration_rate": self.exploration_rate,
                     "training_steps": self.training_steps,
+                    "training_rounds": self.training_rounds,
                     "config": self.CONFIG
                 }
                 # Save the model
@@ -262,7 +265,7 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
         self.buffer.push(state=state_to_features(state), action=action, reward=reward, next_state=state_to_features(next_state))
         # Update the exploration rate
         self.exploration_rate = update_exploration_rate(self, self.exploration_rate)
-        # Increment the total number of steps
+        # Increment the total number of steps performed in training
         self.training_steps += 1
         # Increment the reward of the round/game during training
         self.training_reward_of_round += reward
@@ -279,12 +282,15 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
             self.start_test_training_next_round = True
         # Check if the round/game has ended
         if is_end_of_round:
+            # Increment the number of rounds/games performed in training
+            self.training_rounds += 1
             # Log the stats of the round/game during training
             wandb.log({ 
                 "training_reward_of_round": self.training_reward_of_round,
                 "training_score_of_round": score, 
                 "training_steps_of_round": state["step"],
-                "exploration_rate": self.exploration_rate
+                "training_round": self.training_rounds,
+                "exploration_rate": self.exploration_rate,
                 }, step=self.training_steps)
             # Reset the reward of the round/game during training
             self.training_reward_of_round = 0
