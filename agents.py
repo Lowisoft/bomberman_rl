@@ -219,18 +219,18 @@ class AgentRunner:
         self.fake_self = SimpleNamespace()
         self.fake_self.train = train
 
-        self.wlogger = logging.getLogger(self.agent_name + '_wrapper')
-        self.wlogger.setLevel(s.LOG_AGENT_WRAPPER)
-        self.fake_self.logger = logging.getLogger(self.agent_name + '_code')
-        self.fake_self.logger.setLevel(s.LOG_AGENT_CODE)
+        #self.wlogger = logging.getLogger(self.agent_name + '_wrapper')
+        #self.wlogger.setLevel(s.LOG_AGENT_WRAPPER)
+        #self.fake_self.logger = logging.getLogger(self.agent_name + '_code')
+        #self.fake_self.logger.setLevel(s.LOG_AGENT_CODE)
         log_dir = f'agent_code/{self.code_name}/logs/'
         if not os.path.exists(log_dir): os.makedirs(log_dir)
         handler = logging.FileHandler(f'{log_dir}{self.agent_name}.log', mode="w")
         handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s')
         handler.setFormatter(formatter)
-        self.wlogger.addHandler(handler)
-        self.fake_self.logger.addHandler(handler)
+        #self.wlogger.addHandler(handler)
+        #self.fake_self.logger.addHandler(handler)
 
     def process_event(self, event_name, *event_args):
         module_name = None
@@ -243,15 +243,15 @@ class AgentRunner:
         module = getattr(self, module_name)
 
         try:
-            self.wlogger.debug(f"Calling {event_name} on callback.")
+            #self.wlogger.debug(f"Calling {event_name} on callback.")
             start_time = time()
             event_result = getattr(module, event_name)(self.fake_self, *event_args)
             duration = time() - start_time
-            self.wlogger.debug(f"Got result from callback#{event_name} in {duration:.3f}s.")
+            #self.wlogger.debug(f"Got result from callback#{event_name} in {duration:.3f}s.")
 
             self.result_queue.put((event_name, duration, event_result))
         except BaseException as e:
-            self.wlogger.exception(e)
+            #self.wlogger.exception(e)
             self.result_queue.put((event_name, 0, e))
 
 

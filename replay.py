@@ -15,7 +15,7 @@ class ReplayWorld(GenericWorld):
         super().__init__(args)
 
         replay_file = args.replay
-        self.logger.info(f'Loading replay file "{replay_file}"')
+        #self.logger.info(f'Loading replay file "{replay_file}"')
         self.replay_file = replay_file
         with open(replay_file, 'rb') as f:
             self.loaded_replay = pickle.load(f)
@@ -62,16 +62,16 @@ class ReplayWorld(GenericWorld):
         self.replay['permutations'].append(perm)
         for i in perm:
             a = self.active_agents[i]
-            self.logger.debug(f'Repeating action from agent <{a.name}>')
+            #self.logger.debug(f'Repeating action from agent <{a.name}>')
             action = self.loaded_replay['actions'][a.name][self.step - 1]
-            self.logger.info(f'Agent <{a.name}> chose action {action}.')
+            #self.logger.info(f'Agent <{a.name}> chose action {action}.')
             self.replay['actions'][a.name].append(action)
             self.perform_agent_action(a, action)
 
     def time_to_stop(self):
         time_to_stop = super().time_to_stop()
         if self.step == self.loaded_replay['n_steps']:
-            self.logger.info('Replay ends here, wrap up round')
+            #self.logger.info('Replay ends here, wrap up round')
             time_to_stop = True
         return time_to_stop
 

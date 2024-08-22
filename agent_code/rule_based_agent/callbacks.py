@@ -65,7 +65,7 @@ def setup(self):
     You can also use the self.logger object at any time to write to the log
     file for debugging (see https://docs.python.org/3.7/library/logging.html).
     """
-    self.logger.debug('Successfully entered setup code')
+    #self.logger.debug('Successfully entered setup code')
     np.random.seed()
     # Fixed length FIFO queues to avoid repeating the same actions
     self.bomb_history = deque([], 5)
@@ -90,7 +90,7 @@ def act(self, game_state):
     which is a dictionary. Consult 'get_state_for_agent' in environment.py to see
     what it contains.
     """
-    self.logger.info('Picking action according to rule set')
+    #self.logger.info('Picking action according to rule set')
     # Check if we are in a different round
     if game_state["round"] != self.current_round:
         reset_self(self)
@@ -132,7 +132,7 @@ def act(self, game_state):
     if (x, y) in valid_tiles: valid_actions.append('WAIT')
     # Disallow the BOMB action if agent dropped a bomb in the same spot recently
     if (bombs_left > 0) and (x, y) not in self.bomb_history: valid_actions.append('BOMB')
-    self.logger.debug(f'Valid actions: {valid_actions}')
+    #self.logger.debug(f'Valid actions: {valid_actions}')
 
     # Collect basic action proposals in a queue
     # Later on, the last added action that is also valid will be chosen
@@ -158,13 +158,13 @@ def act(self, game_state):
     if self.ignore_others_timer > 0:
         for o in others:
             free_space[o] = False
-    d = look_for_targets(free_space, (x, y), targets, self.logger)
+    d = look_for_targets(free_space, (x, y), targets) #self.logger
     if d == (x, y - 1): action_ideas.append('UP')
     if d == (x, y + 1): action_ideas.append('DOWN')
     if d == (x - 1, y): action_ideas.append('LEFT')
     if d == (x + 1, y): action_ideas.append('RIGHT')
     if d is None:
-        self.logger.debug('All targets gone, nothing to do anymore')
+        #self.logger.debug('All targets gone, nothing to do anymore')
         action_ideas.append('WAIT')
 
     # Add proposal to drop a bomb if at dead end

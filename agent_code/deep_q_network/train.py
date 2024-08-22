@@ -112,7 +112,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     if False:
         events.append(PLACEHOLDER_EVENT)
 
-    self.logger.debug(f"Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}")
+    #self.logger.debug(f"Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}")
 
     # Handle the step
     handle_step(self, 
@@ -140,7 +140,7 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     :param self: The same object that is passed to all of your callbacks.
     """
     
-    self.logger.debug(f"Encountered event(s) {", ".join(map(repr, events))} in final step")
+    #self.logger.debug(f"Encountered event(s) {", ".join(map(repr, events))} in final step")
     # Handle the step
     # NB: Check if the the game/round has ended but the agent is not dead.
     #     In this case, the last step is already handled in game_events_occurred and thus should be ignored in end_of_round (this is a mistake in the environment)
@@ -190,7 +190,7 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
     reward_sum += self.CONFIG["DISCOUNT_RATE"] * potential_of_state(next_state) - potential_of_state(state)    
 
     # Log the reward and the events
-    self.logger.info(f"Awarded {reward_sum} for potential difference and for events {", ".join(events)}")
+    #self.logger.info(f"Awarded {reward_sum} for potential difference and for events {", ".join(events)}")
     
     return reward_sum
 
@@ -361,6 +361,6 @@ def train_network(self) -> None:
 def update_target_network(self) -> None:
     """ Update the target Q-network. """
 
-    self.logger.debug(f"Updating target Q-network.")
+    #self.logger.debug(f"Updating target Q-network.")
     # TODO: Try soft update instead of hard update
     self.target_q_network.load_state_dict(self.local_q_network.state_dict()) 
