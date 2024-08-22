@@ -5,6 +5,7 @@ START_FROM: null # null, best, latest
 NETWORK_PATH: ./model/data/network.pth
 TRAINING_DATA_PATH: ./model/data/training_data.pth
 BUFFER_PATH: ./model/data/experience_replay_buffer.pkl
+MAX_RUNTIME: 6000 # 100 minutes
 CHANNEL_SIZE: 4
 ACTION_SIZE: 6
 TESTING_FREQUENCY: 40000

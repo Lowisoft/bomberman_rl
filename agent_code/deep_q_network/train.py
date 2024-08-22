@@ -1,6 +1,8 @@
 import os
 import torch
 import wandb
+import time
+import sys
 import numpy as np
 from collections import namedtuple, deque
 from typing import Union, List
@@ -68,6 +70,8 @@ def setup_training(self) -> None:
 
     # Initialize the reward per round/game during training
     self.training_reward_of_round = 0
+    # Initialize the start time of the training
+    self.training_start_time = time.time()
     # Initialize whether the agent is tested during training on a set of rounds/games with a fixed seed 
     self.test_training = False
     # Initialize whether the testing during training should be started in the next game/round
@@ -295,6 +299,11 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
                 }, step=self.training_steps)
             # Reset the reward of the round/game during training
             self.training_reward_of_round = 0
+            # Check if the maximum runtime is reached
+            if "MAX_RUNTIME" in self.CONFIG and self.CONFIG["MAX_RUNTIME"] is not None and time.time() - self.training_start_time > self.CONFIG["MAX_RUNTIME"]:
+                print("Maximum runtime reached.")
+                # Stop the training
+                sys.exit()
             # Check if the testing phase should be started in the next game/round
             if self.start_test_training_next_round:
                 # Reset the flag
