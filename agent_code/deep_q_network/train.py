@@ -115,14 +115,18 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     #self.logger.debug(f"Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}")
 
     # Handle the step
-    handle_step(self, 
-        state=old_game_state,
-        action=self_action, 
-        reward=get_reward(self, state=old_game_state, action=self_action, next_state=new_game_state, events=events),
-        next_state=new_game_state,
-        score=new_game_state["self"][1],
-        change_world_seed=new_game_state["change_world_seed"],
-        is_end_of_round=round_ended_but_not_dead(self, game_state=new_game_state)
+    # NB: Check if the the game/round has ended but the agent is not dead.
+    #     In this case, the last step is already handled in end_of_round and thus should be ignored in game_events_occurred (this is a mistake in the environment)
+    #     Note that the downside of this fix is that the event SURVIVED_ROUND is not always handled and should therefore not be used
+    if not round_ended_but_not_dead(self, game_state=new_game_state): 
+        handle_step(self, 
+            state=old_game_state,
+            action=self_action, 
+            reward=get_reward(self, state=old_game_state, action=self_action, next_state=new_game_state, events=events),
+            next_state=new_game_state,
+            score=new_game_state["self"][1],
+            change_world_seed=new_game_state["change_world_seed"],
+            is_end_of_round=False
     )
 
 
@@ -141,19 +145,16 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     """
     
     #self.logger.debug(f"Encountered event(s) {", ".join(map(repr, events))} in final step")
+
     # Handle the step
-    # NB: Check if the the game/round has ended but the agent is not dead.
-    #     In this case, the last step is already handled in game_events_occurred and thus should be ignored in end_of_round (this is a mistake in the environment)
-    #     Note that the downside of this fix is that the event SURVIVED_ROUND is not always handled and should therefore not be used
-    if not round_ended_but_not_dead(self, game_state=last_game_state): 
-        handle_step(self, 
-        state=last_game_state,
-        action=last_action,
-        reward=get_reward(self, state=last_game_state, action=last_action, next_state=None, events=events),
-        next_state=None,
-        score=last_game_state["self"][1],
-        change_world_seed=last_game_state["change_world_seed"],
-        is_end_of_round=True)
+    handle_step(self, 
+    state=last_game_state,
+    action=last_action,
+    reward=get_reward(self, state=last_game_state, action=last_action, next_state=None, events=events),
+    next_state=None,
+    score=last_game_state["self"][1],
+    change_world_seed=last_game_state["change_world_seed"],
+    is_end_of_round=True)
 
 
 def get_reward(self, state: dict, action: str, next_state: Union[dict, None], events: List[str]) -> int:
