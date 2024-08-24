@@ -5,25 +5,25 @@ metric:
 
 parameters:
   LEARNING_RATE:
-    values: [0.0001, 0.001, 0.01]
+    value: 0.001
   BATCH_SIZE:
-    values: [32, 64, 128]
+    value: 32
   BUFFER_CAPACITY:
-    values: [30000, 50000, 70000]
+    value: 50000
   BUFFER_MIN_SIZE:
-    values: [1000, 10000, 30000]
+    value: 10000
   HIDDEN_LAYER_SIZE:
-    values: [128, 256]
+    value: 128
   EXPLORATION_RATE_DECAY:
-    values: [0.9999993, 0.9999994, 0.9999995, 0.9999996, 0.9999997]
+    value: 0.9999995
   DISCOUNT_RATE:
-    values: [0.9, 0.91, 0.92, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98]
+    value: 0.93
   TRAINING_FREQUENCY:
-    values: [25, 50, 100]
+    values: 50
   TARGET_UPDATE_FREQUENCY:
-    values: [2500, 5000, 10000]
+    value: 5000
   OPTIMIZER:
-    values: ["Adam", "RMSprop"] # Adam, RMSprop, SGD
+    value: "Adam" # Adam, RMSprop, SGD
   START_FROM:  
     value: null # null, best, latest (usually you want to start the sweep from scratch)
 project: deep_q_network
