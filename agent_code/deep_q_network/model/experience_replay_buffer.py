@@ -48,6 +48,7 @@ class ExperienceReplayBuffer(object):
 
     def sample(self, batch_size: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Samples a batch of experiences from the buffer.
+            The every experience in the batch is randomly horizontally/vertically flipped and radomly rotated.
 
         Args: 
             batch_size (int): The number of experiences to sample into the batch.
@@ -88,8 +89,8 @@ class ExperienceReplayBuffer(object):
         vertical_flip_mask = torch.rand(batch_size, device=self.device) < 0.5
         rotation_mask = torch.rand(batch_size, device=self.device) < 0.5
 
-        # Detect whether the action is a move (not the case for BOMB or WAIT)
-        move_mask = (actions <= 4).to(self.device)
+        # Generate a mask indicating whether the action is a move (not the case for WAIT [4] or BOMB [5])
+        move_mask = (actions < 4).to(self.device)
 
         # Apply random horizontal flips
         if horizontal_flip_mask.any():
@@ -97,9 +98,9 @@ class ExperienceReplayBuffer(object):
             states[horizontal_flip_mask] = F.hflip(states[horizontal_flip_mask])
             # Horizontally flip the next states
             next_states[horizontal_flip_mask] = F.hflip(next_states[horizontal_flip_mask])
-            # Horizontal flip the actions
+            # Horizontally flip the actions
             # NB: We should only swap LEFT and RIGHT, which are both odd (1 or 3 resp.)
-            #     Thus we can filter for LEFT and RIGHT with (actions[horizontal_flip_mask] % 2)
+            #     Thus we can filter for LEFT and RIGHT with (actions[horizontal_flip_mask & move_mask] % 2)
             actions[horizontal_flip_mask & move_mask] = (actions[horizontal_flip_mask & move_mask] + ((actions[horizontal_flip_mask & move_mask] % 2) * 2)) % 4
 
         # Apply random vertical flips
@@ -108,15 +109,17 @@ class ExperienceReplayBuffer(object):
             states[vertical_flip_mask] = F.vflip(states[vertical_flip_mask])
             # Vertically flip the next states
             next_states[vertical_flip_mask] = F.vflip(next_states[vertical_flip_mask])
-            # Horizontal flip the actions
+            # Vertically flip the actions
             # NB: We should only swap UP and DOWN, which are both even (0 or 2 resp.)
-            #     Thus we can filter for UP and DOWN with ((1 + actions[vertical_flip_mask]) % 2)
+            #     Thus we can filter for UP and DOWN with ((1 + actions[vertical_flip_mask & move_mask]) % 2)
             actions[vertical_flip_mask & move_mask] = (actions[vertical_flip_mask & move_mask] + (((1 + actions[vertical_flip_mask & move_mask]) % 2) * 2)) % 4
 
         # Apply random rotations
         # IMPORTANT: The rotations are performed counterclockwise
         if rotation_mask.any():
-            # Randomly draw the rotation multiplicities (either 1, 2 or 4)
+            # Randomly draw the rotation multiplicities (either 1, 2 or 3)
+            # NB: For simpliity, we draw a rotation multiplicity for every tuple, even if the rotation_mask
+            #     at the respective index is 0
             rotation_multip = torch.randint(1, 4, size=(batch_size, ), device=self.device)
             # Rotate the states         
             states = torch.stack([
