@@ -19,7 +19,7 @@ parameters:
   DISCOUNT_RATE:
     value: 0.93
   TRAINING_FREQUENCY:
-    values: 50
+    value: 50
   TARGET_UPDATE_FREQUENCY:
     value: 5000
   OPTIMIZER:
