@@ -34,7 +34,10 @@ def setup_training(self) -> None:
     # Load the weights of the local Q-network to the target Q-network
     self.target_q_network.load_state_dict(self.local_q_network.state_dict())
     # Initialize the experience replay memory
-    self.buffer = ExperienceReplayBuffer(buffer_capacity=self.CONFIG["BUFFER_CAPACITY"], device=self.device)
+    self.buffer = ExperienceReplayBuffer(
+        buffer_capacity=self.CONFIG["BUFFER_CAPACITY"], 
+        device=self.device,
+        transform_batch_randomly=self.CONFIG["TRANSFORM_BATCH_RANDOMLY"])
     # Initalize the optimizer
     if self.CONFIG["OPTIMIZER"] == "Adam":
         self.optimizer = torch.optim.Adam(self.local_q_network.parameters(), lr=self.CONFIG["LEARNING_RATE"])
@@ -341,29 +344,30 @@ def train_network(self) -> None:
 
     # Set the local network to training mode
     self.local_q_network.train()
-    # Sample a batch of experiences from the buffer
-    states, actions, rewards, next_states, dones = self.buffer.sample(batch_size=self.CONFIG["BATCH_SIZE"])
-    # Get the Q-values of the taken actions for the states from the local Q-network
-    # NB: Add a dummy dimension with unsqueeze(1) for the actions to obtain the shape (batch_size, 1)
-    #     This is necessary because .gather requires the shape of the actions to match the shape of the output of the local Q-network
-    # NB: Remove the dummy dimension with squeeze(1) to obtain the shape (batch_size, ) for q_values  
-    q_values = self.local_q_network(states).gather(dim=1, index=actions.unsqueeze(1)).squeeze(1)
-    # Get the maximum of the Q-values of the actions for the next states from the target Q-network
-    # NB: Detach the tensor to prevent backpropagation through the target Q-network
-    # The shape of next_q_values_max is (batch_size, )
-    next_q_values_max = self.target_q_network(next_states).detach().max(dim=1)[0]        
-    # Calculate the target Q-values
-    target_q_values = rewards + self.CONFIG["DISCOUNT_RATE"] * next_q_values_max * (1 - dones)
-    # Compute the MSE loss
-    loss = self.loss_function(q_values, target_q_values)
-    # Reset the gradients
-    self.optimizer.zero_grad()
-    # Peform the backpropagation
-    loss.backward()
-    # Log the loss
-    wandb.log({"loss": loss.item()}, step=self.training_steps)
-    # Update the weights
-    self.optimizer.step()
+    for i in range(self.CONFIG["NUM_EPOCHS"]):
+        # Sample a batch of experiences from the buffer
+        states, actions, rewards, next_states, dones = self.buffer.sample(batch_size=self.CONFIG["BATCH_SIZE"])
+        # Get the Q-values of the taken actions for the states from the local Q-network
+        # NB: Add a dummy dimension with unsqueeze(1) for the actions to obtain the shape (batch_size, 1)
+        #     This is necessary because .gather requires the shape of the actions to match the shape of the output of the local Q-network
+        # NB: Remove the dummy dimension with squeeze(1) to obtain the shape (batch_size, ) for q_values  
+        q_values = self.local_q_network(states).gather(dim=1, index=actions.unsqueeze(1)).squeeze(1)
+        # Get the maximum of the Q-values of the actions for the next states from the target Q-network
+        # NB: Detach the tensor to prevent backpropagation through the target Q-network
+        # The shape of next_q_values_max is (batch_size, )
+        next_q_values_max = self.target_q_network(next_states).detach().max(dim=1)[0]        
+        # Calculate the target Q-values
+        target_q_values = rewards + self.CONFIG["DISCOUNT_RATE"] * next_q_values_max * (1 - dones)
+        # Compute the MSE loss
+        loss = self.loss_function(q_values, target_q_values)
+        # Reset the gradients
+        self.optimizer.zero_grad()
+        # Peform the backpropagation
+        loss.backward()
+        # Log the loss
+        wandb.log({"loss": loss.item()}, step=self.training_steps)
+        # Update the weights
+        self.optimizer.step()
     # Set the local network back to evaluation mode
     self.local_q_network.eval()
 
