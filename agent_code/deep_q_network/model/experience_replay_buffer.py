@@ -84,15 +84,20 @@ class ExperienceReplayBuffer(object):
         # NB: The float data type is used because the dones mask is used in a calculation with rewards (which are float)
         dones = torch.from_numpy(dones).float().to(self.device)
 
-        # # NB: Uncomment for assertions
+        # # NB: Uncomment these variables for assertions
         # old_states = states.detach().clone()
         # old_next_states = next_states.detach().clone()
         # old_actions = actions.detach().clone()
 
         # Generate random masks for each transformation
+        # NB: There are 8 different transformed states (cf. dihedral group D_4):
+        #     1) identity 2) rotate90         3) rotate180         4) rotate270
+        #     5) hflip    6) hflip + rotate90 7) hflip + rotate180 8) hflip + rotate270
+        # NB2: vflip is the same as hflip + rotate180 and can thus be omitted
         horizontal_flip_mask = torch.rand(batch_size, device=self.device) < 0.5
-        vertical_flip_mask = torch.rand(batch_size, device=self.device) < 0.5
-        rotation_mask = torch.rand(batch_size, device=self.device) < 0.5
+        # Rotate with a probability of 75%. If so, the rotation angle (90, 180, 270) is uniformly sampled.
+        # This ensures that no rotation, rotate90, rotate180 and rotate270 have all the same probability of 25%.
+        rotation_mask = torch.rand(batch_size, device=self.device) < 0.75
 
         # Generate a mask indicating whether the action is a move (not the case for WAIT [4] or BOMB [5])
         move_mask = (actions < 4).to(self.device)
@@ -111,21 +116,6 @@ class ExperienceReplayBuffer(object):
             # NB: We should only swap UP and DOWN, which are both even (0 or 2 resp.)
             #     Thus we can filter for UP and DOWN with ((1 + actions[horizontal_flip_mask & move_mask]) % 2)
             actions[horizontal_flip_mask & move_mask] = (actions[horizontal_flip_mask & move_mask] + (((1 + actions[horizontal_flip_mask & move_mask]) % 2) * 2)) % 4
-   
-        # Apply random vertical flips
-        # NB: Every channel of a state is of size (column_size, row_size), which is the TRANSPOSE of the 
-        #     grid that is drawn in the GUI. Thus the VERTICAL flip is performed on the TRANSPOSE, which
-        #     is actually a HORIZONTAL flip of the grid drawn in the GUI. Therefore, the actions must be 
-        #     transformed according to a HORIZONTAL flip
-        if vertical_flip_mask.any():
-            # Vertically flip the states
-            states[vertical_flip_mask] = F.vflip(states[vertical_flip_mask])
-            # Vertically flip the next states
-            next_states[vertical_flip_mask] = F.vflip(next_states[vertical_flip_mask])
-            # HORIZONTICALLY flip the actions
-            # NB: We should only swap LEFT and RIGHT, which are both odd (1 or 3 resp.)
-            #     Thus we can filter for LEFT and RIGHT with (actions[vertical_flip_mask & move_mask] % 2)
-            actions[vertical_flip_mask & move_mask] = (actions[vertical_flip_mask & move_mask] + ((actions[vertical_flip_mask & move_mask] % 2) * 2)) % 4
 
         # Apply random counterclockwise rotations
         # IMPORTANT: Every channel of a state is of size (column_size, row_size), which is the TRANSPOSE of the 
@@ -169,26 +159,7 @@ class ExperienceReplayBuffer(object):
         #                     assert next_states[i][j][x][y].item() == old_next_states[i][j][x][y].item()
         #                     assert actions[i].item() == old_actions[i].item()
 
-        # # Assert that vertical flips are properly implemented in isolation
-        # for i in range(batch_size):
-        #     for j in range(state_shape[0]):
-        #         for x in range(state_shape[2]):
-        #             for y in range(state_shape[1]):
-        #                 if vertical_flip_mask[i]:
-        #                     # Again, since the we store the TRANSPOSED of the grid drawn on the GUI,
-        #                     # a vertical flip is actually a horizontal flip
-        #                     assert states[i][j][state_shape[1] - 1 - x][y].item() == old_states[i][j][x][y].item()
-        #                     assert next_states[i][j][state_shape[1] - 1 - x][y].item() == old_next_states[i][j][x][y].item()
-        #                     if old_actions[i].item() < 4 and old_actions[i].item() % 2 == 1:
-        #                         assert actions[i].item() % 2 == 1 and actions[i].item() == (old_actions[i].item() + 2) % 4
-        #                     else: 
-        #                         assert actions[i].item() == old_actions[i].item()
-        #                 else:
-        #                     assert states[i][j][x][y].item() == old_states[i][j][x][y].item()
-        #                     assert next_states[i][j][x][y].item() == old_next_states[i][j][x][y].item()
-        #                     assert actions[i].item() == old_actions[i].item()
-
-        # # Assert that vertical flips are properly implemented in isolation
+        # # Assert that counterclockwise rotations are properly implemented in isolation
         # for i in range(batch_size):
         #     for j in range(state_shape[0]):
         #         for x in range(state_shape[2]):
