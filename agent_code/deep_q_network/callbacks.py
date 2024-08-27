@@ -161,7 +161,7 @@ def state_to_features(game_state: Union[dict, None]) -> np.array:
         # Calculate the danger of the bomb (ranges from 1 to 4)
         danger = (s.BOMB_TIMER) - bomb[1]
         # Get the coordinates of the bomb blast
-        blast_coords = get_bomb_blast_coords(bomb[0][0], bomb[0][1], s.BOMB_POWER, game_state["field"])
+        blast_coords = get_bomb_blast_coords(bomb[0][0], bomb[0][1], game_state["field"])
         # Loop over all coordinates of the bomb blast
         for coord in blast_coords:
             # Set the value of the bomb blast to the danger of the bomb if there is not already a stronger danger

@@ -11,7 +11,10 @@ import settings as s
 from .model.experience_replay_buffer import ExperienceReplayBuffer
 from .model.network import Network
 from .callbacks import state_to_features
-from .utils import round_ended_but_not_dead, set_seed, unset_seed, save_data, load_training_data, potential_of_state
+from .utils import round_ended_but_not_dead, set_seed, unset_seed, save_data, load_training_data, potential_of_state, is_bomb_useless
+
+# Custom events
+USELESS_BOMB = "USELESS_BOMB"
 
 
 def setup_training(self) -> None:
@@ -115,10 +118,6 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
     :param events: The events that occurred when going from  `old_game_state` to `new_game_state`
     """
 
-    # TODO: Add your own events to hand out rewards
-    if False:
-        events.append(PLACEHOLDER_EVENT)
-
     #self.logger.debug(f"Encountered game event(s) {", ".join(map(repr, events))} in step {new_game_state["step"]}")
 
     # Handle the step
@@ -177,22 +176,25 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         int: The reward for the action taken in the state.
     """
 
+    # Check if a useless bomb was dropped
+    if action == "BOMB" and is_bomb_useless(state["self"][3][0], state["self"][3][1], state["field"]):
+        events.append(USELESS_BOMB)
+
     # Define the rewards for the events
     game_rewards = {
         e.COIN_COLLECTED: 1,
         e.KILLED_OPPONENT: 5,
         e.INVALID_ACTION: -0.1,
-        e.WAITED: -0.1,
-        e.BOMB_DROPPED: -0.5,
+        USELESS_BOMB: -0.5,
         # Penalize the agent for dying by the number of coins left (normalized)
-        e.GOT_KILLED: -len(state["coins"])/s.SCENARIOS["coin-heaven"]["COIN_COUNT"] 
+        e.GOT_KILLED: -(s.SCENARIOS["loot-crate"]["COIN_COUNT"] - state["self"][1])/s.SCENARIOS["loot-crate"]["COIN_COUNT"] 
     }
 
     # Compute the reward based on the events
     reward_sum = 0
     for event in events:
         if event in game_rewards:
-            reward_sum += game_rewards[event]
+                reward_sum += game_rewards[event]
 
     # Add reward shaping based on the potential of the state and the next state
     reward_sum += self.CONFIG["DISCOUNT_RATE"] * potential_of_state(next_state) - potential_of_state(state)    

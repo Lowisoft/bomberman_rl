@@ -38,5 +38,5 @@ command:
   - --agents=deep_q_network
   - --train=1
   - --n-rounds=500000
-  - --scenario=coin-heaven
+  - --scenario=loot-crate
   - --no-gui

@@ -111,14 +111,13 @@ def crop_channel(channel: np.ndarray, border_size: int) -> np.ndarray:
     return channel[border_size:-border_size, border_size:-border_size]
 
 
-def get_bomb_blast_coords(x: int, y: int, power: int, arena: np.ndarray) -> list:
+def get_bomb_blast_coords(x: int, y: int, arena: np.ndarray) -> list:
     """ Get the coordinates of the blast of a bomb. Taken from item.py.
         NB: The blast only stops at walls but it does not stop at crates, players, coins or other bombs.
 
     Args:
         x (int): The x-coordinate of the bomb.
         y (int): The y-coordinate of the bomb.
-        power (int): The power of the bomb.
         arena (np.ndarray): The current state of the arena/field.
 
     Returns:
@@ -126,6 +125,7 @@ def get_bomb_blast_coords(x: int, y: int, power: int, arena: np.ndarray) -> list
     """
 
     blast_coords = [(x, y)]
+    power = s.BOMB_POWER
 
     for i in range(1, power + 1):
         if arena[x + i, y] == -1:
@@ -145,6 +145,29 @@ def get_bomb_blast_coords(x: int, y: int, power: int, arena: np.ndarray) -> list
         blast_coords.append((x, y - i))
 
     return blast_coords
+
+
+def is_bomb_useless(x: int, y: int, arena: np.ndarray) -> bool:
+    """ Determine wheter the dropped bomb is useless.
+
+    Args:
+        x (int): The x-coordinate of the bomb.
+        y (int): The y-coordinate of the bomb.
+        arena (np.ndarray): The current state of the arena/field.
+
+    Returns:
+        bool: Whether the dropped bomb is useless.
+    """
+
+    # Get the blast coordinates of the bomb
+    blast_coords = get_bomb_blast_coords(x, y, arena)
+    # Check if the bomb hits any crate
+    for coord in blast_coords:
+        if arena[coord] == 1:
+            # If so, the bomb is not useless
+            return False
+    # Otherwise the bomb is useless
+    return True
 
 
 def round_ended_but_not_dead(self, game_state: dict) -> bool:

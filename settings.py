@@ -17,12 +17,12 @@ SCENARIOS = {
     },
     "coin-heaven": {
         "CRATE_DENSITY": 0,
-        #"COIN_COUNT": 50
-        "COIN_COUNT": 20 # MANUALLY CHANGED
+        "COIN_COUNT": 50
     },
     "loot-crate": { 
         "CRATE_DENSITY": 0.75, 
-        "COIN_COUNT": 50 
+        #"COIN_COUNT": 50
+        "COIN_COUNT": 20 # MANUALLY CHANGED
     }, 
     # this is the tournament game mode
     "classic": {
