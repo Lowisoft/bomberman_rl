@@ -278,7 +278,7 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
         # Increment the reward of the round/game during training
         self.training_reward_of_round += reward
         # Check if the agent should be trained and if the buffer has enough experiences to sample a batch
-        if self.training_steps % self.CONFIG["TRAINING_FREQUENCY"] == 0 and len(self.buffer) > self.CONFIG["BUFFER_MIN_SIZE"]:
+        if self.training_steps % self.CONFIG["TRAINING_FREQUENCY"] == 0 and len(self.buffer) >= self.CONFIG["BUFFER_MIN_SIZE"]:
             # Train the model
             train_network(self)
         #  Check if the target Q-network should be updated

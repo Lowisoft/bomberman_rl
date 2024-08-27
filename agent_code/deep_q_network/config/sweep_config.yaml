@@ -25,11 +25,11 @@ parameters:
   OPTIMIZER:
     value: "Adam" # Adam, RMSprop, SGD
   TRANSFORM_BATCH_RANDOMLY:
-    values: [false, true]
+    value: false
   NUM_EPOCHS: 
-    values: [1, 3]
+    value: 3
   START_FROM:  
-    value: null # null, best, latest (usually you want to start the sweep from scratch)
+    value: null # null, best, last (usually you want to start the sweep from scratch)
 project: deep_q_network
 command:
   - python

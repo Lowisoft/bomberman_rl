@@ -1,7 +1,7 @@
 PROJECT_NAME: deep_q_network
 PROJECT_NAME_SHORT: DQN
 PATH: ./model/data/
-START_FROM: null # null, best, latest
+START_FROM: last # null, best, last
 NETWORK_PATH: ./model/data/network.pth
 TRAINING_DATA_PATH: ./model/data/training_data.pth
 BUFFER_PATH: ./model/data/experience_replay_buffer.pkl
@@ -16,9 +16,9 @@ EXPLORATION_RATE_MIN: 0.05
 # The following parameters are part of a potential sweep
 LEARNING_RATE: 0.001
 BATCH_SIZE: 32
-TRANSFORM_BATCH_RANDOMLY: true
+TRANSFORM_BATCH_RANDOMLY: false
 HIDDEN_LAYER_SIZE: 128
-NUM_EPOCHS: 1
+NUM_EPOCHS: 3
 BUFFER_CAPACITY: 50000
 BUFFER_MIN_SIZE: 10000
 EXPLORATION_RATE_DECAY: 0.9999995
