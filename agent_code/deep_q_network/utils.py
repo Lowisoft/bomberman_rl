@@ -3,7 +3,7 @@ import random
 import torch
 import wandb
 import numpy as np
-from typing import Tuple, Union
+from typing import Tuple, Union, List
 import settings as s
 
 def set_seed(seed: int, change_world_seed, use_cuda: bool = False) -> None:
@@ -111,63 +111,174 @@ def crop_channel(channel: np.ndarray, border_size: int) -> np.ndarray:
     return channel[border_size:-border_size, border_size:-border_size]
 
 
-def get_bomb_blast_coords(x: int, y: int, arena: np.ndarray) -> list:
+def get_bomb_blast_coords(x: int, y: int, field: np.ndarray) -> list:
     """ Get the coordinates of the blast of a bomb. Taken from item.py.
         NB: The blast only stops at walls but it does not stop at crates, players, coins or other bombs.
 
     Args:
         x (int): The x-coordinate of the bomb.
         y (int): The y-coordinate of the bomb.
-        arena (np.ndarray): The current state of the arena/field.
+        field (np.ndarray): The current field of the game.
 
     Returns:
         list: The coordinates of the blast of the bomb.
     """
 
     blast_coords = [(x, y)]
-    power = s.BOMB_POWER
 
-    for i in range(1, power + 1):
-        if arena[x + i, y] == -1:
+    for i in range(1, s.BOMB_POWER + 1):
+        if field[x + i, y] == -1:
             break
         blast_coords.append((x + i, y))
-    for i in range(1, power + 1):
-        if arena[x - i, y] == -1:
+    for i in range(1, s.BOMB_POWER + 1):
+        if field[x - i, y] == -1:
             break
         blast_coords.append((x - i, y))
-    for i in range(1, power + 1):
-        if arena[x, y + i] == -1:
+    for i in range(1, s.BOMB_POWER + 1):
+        if field[x, y + i] == -1:
             break
         blast_coords.append((x, y + i))
-    for i in range(1, power + 1):
-        if arena[x, y - i] == -1:
+    for i in range(1, s.BOMB_POWER + 1):
+        if field[x, y - i] == -1:
             break
         blast_coords.append((x, y - i))
 
     return blast_coords
 
 
-def is_bomb_useless(x: int, y: int, arena: np.ndarray) -> bool:
-    """ Determine wheter the dropped bomb is useless.
+def num_crates_in_blast_coords(pos: np.ndarray, field: np.ndarray) -> bool:
+    """ Return the number of crates that are in the blast coords of the given bomb position.
 
     Args:
-        x (int): The x-coordinate of the bomb.
-        y (int): The y-coordinate of the bomb.
-        arena (np.ndarray): The current state of the arena/field.
+        pos (np.npdarray): The postion of the bomb.
+        field (np.ndarray): The current field of the game.
 
     Returns:
-        bool: Whether the dropped bomb is useless.
+        bool: The number of crates that are in the blast coords of the given bomb position.
     """
 
+    # Initialize the number of crates
+    num_crates = 0
     # Get the blast coordinates of the bomb
-    blast_coords = get_bomb_blast_coords(x, y, arena)
-    # Check if the bomb hits any crate
+    blast_coords = get_bomb_blast_coords(pos[0], pos[1], field)
     for coord in blast_coords:
-        if arena[coord] == 1:
-            # If so, the bomb is not useless
-            return False
-    # Otherwise the bomb is useless
-    return True
+        # Check if there is a crate at the coord
+        if field[coord] == 1:
+            # If so, increase the number of crates
+            num_crates += 1
+
+    return num_crates
+
+
+def is_bomb_at_pos(pos: np.ndarray, bombs: List) -> bool:
+    """ Checks whether there is a bomb at the given position.
+
+    Args:
+        pos (np.ndarray): Position to check for.
+        bombs (List): The current list of bombs.
+
+    Returns:
+        bool: Whether there is a bomb at the given position.
+    """
+
+    return any(np.array_equal(np.array(bomb[0]), pos) for bomb in bombs)
+
+
+def is_opponent_at_pos(pos: np.ndarray, others: List) -> bool:
+    """ Checks whether there is an opponent at the given position.
+
+    Args:
+        pos (np.ndarray): Position to check for.
+        others (List): The current list of opponents.
+
+    Returns:
+        bool: Whether there is an opponent at the given position.
+    """
+
+    return any(np.array_equal(np.array(other[3]), pos) for other in others)
+
+
+def is_crate_or_wall_at_pos(pos: np.ndarray, field: np.ndarray) -> bool:
+    """ Checks whether there is a crate or a wall at the given position.
+
+    Args:
+        pos (np.ndarray): Position to check for
+        field (np.ndarray): The current field of the game.
+
+    Returns:
+        bool: Whether there is a crate or a wall at the given position.
+    """
+
+    return field[tuple(pos)] != 0
+
+
+def is_pos_blocked(pos: np.ndarray, state: dict) -> bool:
+    """ Returns whether the given position is blocked.
+    Args:
+        pos (np.ndarray): Position to check for.
+        state (dict): The current state of the game.
+
+    Returns:
+        bool: Whether whether the given position is blocked.
+    """
+
+    return is_bomb_at_pos(pos, state["bombs"]) or is_opponent_at_pos(pos, state["others"]) or is_crate_or_wall_at_pos(pos, state["field"])
+
+
+def agent_has_trapped_itself(state: dict,  action: str, next_state: Union[dict, None]) -> bool:
+    """ Returns whether the agent has trapped itself.
+        TODO: Maybe consider whether crates will be destroyed by other bombs and will thus un-trap the agent
+
+    Args:
+         state (dict): The state before the action was taken.
+        action (str): The action taken in the state.
+        next_state (Union[dict, None]): The state after the action was taken. None if the round/game has ended by death of the agent.
+
+    Returns:
+        bool: Whether the agent has trapped istelf
+    """
+
+    # For simplicity, do not consider the last action of a round/game
+    if next_state is None:
+        return False
+
+    can_place_bomb = state["self"][2]
+    curr_pos = np.array(state["self"][3])
+    next_pos = np.array(next_state["self"][3])
+
+    # Check if the agent stood on its own bomb and moved away from it (either UP, RIGHT, DOWN or LEFT)
+    # NB: The agent can only stand on its own bomb, not on the bomb of opponents
+    if not can_place_bomb and is_bomb_at_pos(curr_pos, state["bombs"]) and action_str_to_index(action) < 4:
+        # Get the (normalized) moving direction of the agent
+        moving_direction = next_pos - curr_pos
+        # Get the (normalized) direction that is perpendicular to the moving direction
+        perpendicular_direction = (1, 1) - abs(moving_direction)
+        # Initialize the booleans
+        can_escape_in_straight_line = True
+        can_escape_around_corner = False
+        # Loop over the power of the bomb to explore the straight line away from the bomb and its two parallel neighboring rows/columns
+        for i in range(1, s.BOMB_POWER + 1):    
+            # Check if it is possible to escape around the corner, i.e. go to a different row AND column than the one of the bomb
+            # For this, we use the perpendicular direction to get the positions on the two rows/columns that are PARALLEL to the 
+            # straight line away from the bomb
+            # IMPORTANT: We can only escape around the corner if can_escape_in_straight_line is still true for the current iteration,
+            #            because we must be able to follow the straight line far enough to be able to actually go around the corner.
+            next_corner_1_pos = tuple(next_pos + (i - 1) * moving_direction - perpendicular_direction)
+            next_corner_2_pos = tuple(next_pos + (i - 1) * moving_direction + perpendicular_direction)
+            if (can_escape_in_straight_line and not can_escape_around_corner
+                and (not is_pos_blocked(next_corner_1_pos, next_state)
+                    or not is_pos_blocked(next_corner_2_pos, next_state))):
+                can_escape_around_corner = True
+
+            # Check if there is any obstacle that blocks escaping in straight line from the bomb
+            # NB: The field outside of the explosion radius must also be free, thus i goes up to 3
+            next_straight_pos = tuple(next_pos + i * moving_direction)
+            if can_escape_in_straight_line and is_pos_blocked(next_straight_pos, next_state):
+                can_escape_in_straight_line = False  
+
+        return not can_escape_in_straight_line and not can_escape_around_corner
+
+    return False 
 
 
 def round_ended_but_not_dead(self, game_state: dict) -> bool:

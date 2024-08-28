@@ -11,10 +11,20 @@ import settings as s
 from .model.experience_replay_buffer import ExperienceReplayBuffer
 from .model.network import Network
 from .callbacks import state_to_features
-from .utils import round_ended_but_not_dead, set_seed, unset_seed, save_data, load_training_data, potential_of_state, is_bomb_useless
+from .utils import (
+    round_ended_but_not_dead, 
+    set_seed, 
+    unset_seed, 
+    save_data, 
+    load_training_data, 
+    potential_of_state, 
+    num_crates_in_blast_coords,
+    agent_has_trapped_itself
+)
 
 # Custom events
 USELESS_BOMB = "USELESS_BOMB"
+TRAPPED_ITSELF = "TRAPPED_ITSELF"
 
 
 def setup_training(self) -> None:
@@ -177,15 +187,19 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
     """
 
     # Check if a useless bomb was dropped
-    if action == "BOMB" and is_bomb_useless(state["self"][3][0], state["self"][3][1], state["field"]):
+    if e.BOMB_DROPPED in events and num_crates_in_blast_coords(np.array(state["self"][3]), state["field"]) == 0:
         events.append(USELESS_BOMB)
+
+    if agent_has_trapped_itself(state, action, next_state):
+        events.append(TRAPPED_ITSELF)
 
     # Define the rewards for the events
     game_rewards = {
         e.COIN_COLLECTED: 1,
         e.KILLED_OPPONENT: 5,
         e.INVALID_ACTION: -0.1,
-        USELESS_BOMB: -0.5,
+        USELESS_BOMB: -0.1,
+        TRAPPED_ITSELF: -0.5,
         # Penalize the agent for dying by the number of coins left (normalized)
         e.GOT_KILLED: -(s.SCENARIOS["loot-crate"]["COIN_COUNT"] - state["self"][1])/s.SCENARIOS["loot-crate"]["COIN_COUNT"] 
     }
