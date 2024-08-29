@@ -24,6 +24,7 @@ from .utils import (
 
 # Custom events
 USELESS_BOMB = "USELESS_BOMB"
+USEFUL_BOMB = "USEFUL_BOMB"
 TRAPPED_ITSELF = "TRAPPED_ITSELF"
 
 
@@ -186,11 +187,23 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         int: The reward for the action taken in the state.
     """
 
-    # Check if a useless bomb was dropped
-    if e.BOMB_DROPPED in events and num_crates_in_blast_coords(np.array(state["self"][3]), state["field"]) == 0:
-        events.append(USELESS_BOMB)
+    # Initialize the number of crates attacked by the dropped bomb
+    # NB: This variable is only used when BOMB_DROPPED is in events
+    num_crates_attacked = 0
 
-    if agent_has_trapped_itself(state, action, next_state):
+    # Check if the agent has dropped a bomb
+    if action == "BOMB" and e.BOMB_DROPPED in events:
+        # Get the number of crates attacked by the dropped bomb
+        num_crates_attacked = num_crates_in_blast_coords(np.array(state["self"][3]), state["field"])
+        # Check if the dropped bomb is useless
+        if num_crates_attacked == 0:
+            events.append(USELESS_BOMB)
+        # Otherwise the dropped bomb is useful
+        else:
+            events.append(USEFUL_BOMB)
+
+    # Check if the agent has just trapped itself by moving away from its own dropped bomb
+    if agent_has_trapped_itself(state, action, next_state, events):
         events.append(TRAPPED_ITSELF)
 
     # Define the rewards for the events
@@ -198,7 +211,8 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         e.COIN_COLLECTED: 1,
         e.KILLED_OPPONENT: 5,
         e.INVALID_ACTION: -0.1,
-        USELESS_BOMB: -0.1,
+        USELESS_BOMB: -0.05,
+        USEFUL_BOMB: 0.01 * num_crates_attacked,
         TRAPPED_ITSELF: -0.5,
         # Penalize the agent for dying by the number of coins left (normalized)
         e.GOT_KILLED: -(s.SCENARIOS["loot-crate"]["COIN_COUNT"] - state["self"][1])/s.SCENARIOS["loot-crate"]["COIN_COUNT"] 

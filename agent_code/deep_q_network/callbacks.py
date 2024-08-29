@@ -182,6 +182,14 @@ def state_to_features(game_state: Union[dict, None]) -> np.array:
     # Add the channel to the list of channels
     channels.append(crop_channel(walls_channel, border_size))
 
+    # Create a channel for the crates
+    # NB: It is important to create a copy of the field to avoid changing the original field
+    crates_channel = game_state["field"].copy()
+    # Remove the walls from the field
+    crates_channel[crates_channel == -1] = 0.
+    # Add the channel to the list of channels
+    channels.append(crop_channel(crates_channel, border_size))
+
     # Stack the channels to obtain the shape (channel_size, column_size, row_size)
     stacked_channels = np.stack(channels)
 

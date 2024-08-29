@@ -3,8 +3,11 @@ import random
 import torch
 import wandb
 import numpy as np
+from pathfinding.core.grid import Grid
+from pathfinding.finder.bi_a_star import BiAStarFinder
 from typing import Tuple, Union, List
 import settings as s
+import events as e
 
 def set_seed(seed: int, change_world_seed, use_cuda: bool = False) -> None:
   """ Set the seed for the random number generators in Python, NumPy and PyTorch.
@@ -225,14 +228,15 @@ def is_pos_blocked(pos: np.ndarray, state: dict) -> bool:
     return is_bomb_at_pos(pos, state["bombs"]) or is_opponent_at_pos(pos, state["others"]) or is_crate_or_wall_at_pos(pos, state["field"])
 
 
-def agent_has_trapped_itself(state: dict,  action: str, next_state: Union[dict, None]) -> bool:
+def agent_has_trapped_itself(state: dict,  action: str, next_state: Union[dict, None], events: List[str]) -> bool:
     """ Returns whether the agent has trapped itself.
         TODO: Maybe consider whether crates will be destroyed by other bombs and will thus un-trap the agent
 
     Args:
-         state (dict): The state before the action was taken.
+        state (dict): The state before the action was taken.
         action (str): The action taken in the state.
         next_state (Union[dict, None]): The state after the action was taken. None if the round/game has ended by death of the agent.
+        events (List[str]): The events that occurred when going from the state to the next state.
 
     Returns:
         bool: Whether the agent has trapped istelf
@@ -248,7 +252,11 @@ def agent_has_trapped_itself(state: dict,  action: str, next_state: Union[dict, 
 
     # Check if the agent stood on its own bomb and moved away from it (either UP, RIGHT, DOWN or LEFT)
     # NB: The agent can only stand on its own bomb, not on the bomb of opponents
-    if not can_place_bomb and is_bomb_at_pos(curr_pos, state["bombs"]) and action_str_to_index(action) < 4:
+    if (not can_place_bomb 
+        and is_bomb_at_pos(curr_pos, state["bombs"]) 
+        and action_str_to_index(action) < 4
+        # Make sure that the action was really performed (e.g. no invalid action)
+        and any(moving_event in events for moving_event in [e.MOVED_UP, e.MOVED_RIGHT, e.MOVED_DOWN, e.MOVED_LEFT])):
         # Get the (normalized) moving direction of the agent
         moving_direction = next_pos - curr_pos
         # Get the (normalized) direction that is perpendicular to the moving direction
@@ -500,17 +508,33 @@ def potential_of_state(state: Union[dict, None]) -> float:
     if state is None:
         return 0.0
 
+    # Prepare the grid for the pathfinding algorithm (> 0: obstacle; <= 0: free)
+    numpy_grid = np.abs(np.copy(state["field"]))
+    # Consider also bombs as obstacles
+    for bomb in state["bombs"]:
+        numpy_grid[bomb[0]] = 1
+    # Create the grid for the pathfinding algorithm
+    # IMPORTANT: We must transpose the numpy matrix
+    grid = Grid(matrix=numpy_grid.T, inverse=True)
+    # Initialize the finder of the pathfinding algorithm
+    finder = BiAStarFinder()
+
     # Get the position of the agent
     agent_position = state["self"][3]
+    agent_node = grid.node(*agent_position)
 
     nearest_coin_distance = None
     # Loop over all coins
     for coin in state["coins"]:
+        coin_node = grid.node(*coin)
+        path, _ = finder.find_path(agent_node, coin_node, grid)
         # Calculate the distance to the coin
-        distance_to_coin = distance(agent_position, coin)
+        distance_to_coin = len(path) - 1
+        # Cleanup the grid for the next potential iteration
+        grid.cleanup()
         # Update the nearest coin distance
         # NB: Do not consider coins at the agent's position (which can happen in the initial state of the coin heaven scenario)
-        if (nearest_coin_distance == None or distance_to_coin < nearest_coin_distance) and distance_to_coin != 0:
+        if (nearest_coin_distance == None or distance_to_coin < nearest_coin_distance) and distance_to_coin > 0:
             nearest_coin_distance = distance_to_coin
 
     if nearest_coin_distance is None:
