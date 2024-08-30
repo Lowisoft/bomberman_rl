@@ -3,6 +3,7 @@ import torch
 import wandb
 import time
 import sys
+import math
 import numpy as np
 from collections import namedtuple, deque
 from typing import Union, List
@@ -211,8 +212,9 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         e.COIN_COLLECTED: 1,
         e.KILLED_OPPONENT: 5,
         e.INVALID_ACTION: -0.1,
-        USELESS_BOMB: -0.05,
-        USEFUL_BOMB: 0.01 * num_crates_attacked,
+        USELESS_BOMB: -0.025,
+        # NB: The agent receives a penalty of -(self.CONFIG["DISCOUNT_RATE"] * 0.1) for placing a bomb due to the potential so we compensate this in USEFUL_BOMB
+        USEFUL_BOMB: self.CONFIG["DISCOUNT_RATE"] * 0.1 + 0.025 * (1 + math.ceil(num_crates_attacked / 3)),
         TRAPPED_ITSELF: -0.5,
         # Penalize the agent for dying by the number of coins left (normalized)
         e.GOT_KILLED: -(s.SCENARIOS["loot-crate"]["COIN_COUNT"] - state["self"][1])/s.SCENARIOS["loot-crate"]["COIN_COUNT"] 

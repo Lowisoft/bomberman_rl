@@ -537,7 +537,27 @@ def potential_of_state(state: Union[dict, None]) -> float:
         if (nearest_coin_distance == None or distance_to_coin < nearest_coin_distance) and distance_to_coin > 0:
             nearest_coin_distance = distance_to_coin
 
-    if nearest_coin_distance is None:
-        return 0.0
+    danger_penalty = 0
+    for bomb in state["bombs"]:
+        # Calculate the (Manhattan) distance to the bomb
+        distance_to_bomb = distance(agent_position, bomb[0])
+        # Only look at bombs where the agent could be in the blast coordinates
+        if distance_to_bomb <= s.BOMB_POWER:
+            # Get the blast coordinates of the bomb
+            blast_coords = get_bomb_blast_coords(bomb[0][0], bomb[0][1], state["field"])       
+            for coord in blast_coords:
+                # Check if there the agent is in the blast coordinates
+                if agent_position[0] == coord[0] and agent_position[1] == coord[1]:
+                    # Compute the base penalty, which depends on the bomb timer
+                    # NB: The bomb timer goes from 3 down to 0
+                    base_penalty = 0.025 + 0.005 * (s.BOMB_TIMER - 1 - bomb[1])
+                    # Increase the base penalty linearly if the agent is closer to the bomb
+                    penalty = base_penalty * (distance_to_bomb - (s.BOMB_POWER + 1))
+                    # Update the danger penalty
+                    # NB: Also consider bombs at the agent's position (which can only happen if the agent dropped the bomb)
+                    if penalty < danger_penalty:
+                        danger_penalty = penalty
 
-    return 1.2 ** (-nearest_coin_distance)
+    coin_reward = 0.0 if nearest_coin_distance is None else 1.2 ** (-nearest_coin_distance)
+
+    return coin_reward + danger_penalty
