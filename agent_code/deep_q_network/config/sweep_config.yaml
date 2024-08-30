@@ -26,6 +26,8 @@ parameters:
     value: "Adam" # Adam, RMSprop, SGD
   TRANSFORM_BATCH_RANDOMLY:
     value: false
+  USE_DANGER_POTENTIAL:
+    values: [true, false]
   NUM_EPOCHS: 
     value: 3
   START_FROM:  
