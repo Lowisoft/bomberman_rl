@@ -222,7 +222,7 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
     reward_sum = 0
     for event in events:
         if event in game_rewards:
-                reward_sum += game_rewards[event]
+            reward_sum += game_rewards[event]
 
     # Add reward shaping based on the potential of the state and the next state
     reward_sum += self.CONFIG["DISCOUNT_RATE"] * potential_of_state(next_state) - potential_of_state(state)    
