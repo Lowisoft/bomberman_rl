@@ -88,6 +88,10 @@ def setup_training(self) -> None:
 
     # Initialize the reward per round/game during training
     self.training_reward_of_round = 0
+    # Initialize the numbers of crates destroyed per round/game during training
+    self.training_destroyed_crates_of_round = 0
+    # Initialize the number of bombs dropped per round/game during training
+    self.training_dropped_bombs_of_round = 0
     # Initialize the start time of the training
     self.training_start_time = time.time()
     # Initialize whether the agent is tested during training on a set of rounds/games with a fixed seed 
@@ -142,6 +146,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
             action=self_action, 
             reward=get_reward(self, state=old_game_state, action=self_action, next_state=new_game_state, events=events),
             next_state=new_game_state,
+            events=events,
             score=new_game_state["self"][1],
             change_world_seed=new_game_state["change_world_seed"],
             is_end_of_round=False
@@ -170,6 +175,7 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     action=last_action,
     reward=get_reward(self, state=last_game_state, action=last_action, next_state=None, events=events),
     next_state=None,
+    events=events,
     score=last_game_state["self"][1],
     change_world_seed=last_game_state["change_world_seed"],
     is_end_of_round=True)
@@ -235,7 +241,7 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
     return reward_sum
 
 
-def handle_step(self, state: dict, action: str, reward: float, next_state: Union[dict, None], score: int, change_world_seed, is_end_of_round: bool = False) -> None:
+def handle_step(self, state: dict, action: str, reward: float, next_state: Union[dict, None], events: List[str], score: int, change_world_seed, is_end_of_round: bool = False) -> None:
     """ Handle a training step in the environment.
 
     Args:
@@ -309,6 +315,10 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
         self.training_steps += 1
         # Increment the reward of the round/game during training
         self.training_reward_of_round += reward
+        # Increment the number of crates destroyed in the round/game during training
+        self.training_destroyed_crates_of_round += events.count(e.CRATE_DESTROYED)
+        # Increment the number of dropped bombs in the round/game during training
+        self.training_dropped_bombs_of_round += events.count(e.BOMB_DROPPED)
         # Check if the agent should be trained and if the buffer has enough experiences to sample a batch
         if self.training_steps % self.CONFIG["TRAINING_FREQUENCY"] == 0 and len(self.buffer) >= self.CONFIG["BUFFER_MIN_SIZE"]:
             # Train the model
@@ -327,6 +337,8 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
             # Log the stats of the round/game during training
             wandb.log({ 
                 "training_reward_of_round": self.training_reward_of_round,
+                "training_destroyed_crates_of_round": self.training_destroyed_crates_of_round,
+                "training_dropped_bombs_of_round": self.training_dropped_bombs_of_round,
                 "training_score_of_round": score, 
                 "training_steps_of_round": state["step"],
                 "training_round": self.training_rounds,
@@ -334,6 +346,10 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
                 }, step=self.training_steps)
             # Reset the reward of the round/game during training
             self.training_reward_of_round = 0
+            # Reset the number of destroyed crates in the round/game during training
+            self.training_destroyed_crates_of_round = 0
+            # Reset the number of dropped bombs in the round/game during training
+            self.training_dropped_bombs_of_round = 0
             # Check if the maximum runtime is reached
             if "MAX_RUNTIME" in self.CONFIG and self.CONFIG["MAX_RUNTIME"] is not None and time.time() - self.training_start_time > self.CONFIG["MAX_RUNTIME"]:
                 print("Maximum runtime reached.")
