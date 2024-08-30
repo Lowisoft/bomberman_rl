@@ -537,6 +537,32 @@ def potential_of_state(state: Union[dict, None]) -> float:
         if (nearest_coin_distance == None or distance_to_coin < nearest_coin_distance) and distance_to_coin > 0:
             nearest_coin_distance = distance_to_coin
 
+    if nearest_coin_distance is None:
+        return 0.0
+
+    return 1.2 ** (-nearest_coin_distance)
+
+
+def danger_potential_of_state(state: Union[dict, None]) -> float:
+    """ Calculate the danger potential of the state.
+        IMPORTANT: For the danger potential, we must use a discount factor of 1,
+                   otherwise the agent gets a positive reward for entering and leaving
+                   the blast coordinates.
+
+    Args:
+        state (Union[dict, None]): The state to calculate the danger potential of.
+
+    Returns:
+        float: The danger potential of the state.
+    """
+
+    # Check if the state is None
+    if state is None:
+        return 0.0
+
+    # Get the position of the agent
+    agent_position = state["self"][3]
+
     danger_penalty = 0
     for bomb in state["bombs"]:
         # Calculate the (Manhattan) distance to the bomb
@@ -558,6 +584,4 @@ def potential_of_state(state: Union[dict, None]) -> float:
                     if penalty < danger_penalty:
                         danger_penalty = penalty
 
-    coin_reward = 0.0 if nearest_coin_distance is None else 1.2 ** (-nearest_coin_distance)
-
-    return coin_reward + danger_penalty
+    return danger_penalty

@@ -18,7 +18,8 @@ from .utils import (
     unset_seed, 
     save_data, 
     load_training_data, 
-    potential_of_state, 
+    potential_of_state,
+    danger_potential_of_state, 
     num_crates_in_blast_coords,
     agent_has_trapped_itself
 )
@@ -219,8 +220,8 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         e.KILLED_OPPONENT: 5,
         e.INVALID_ACTION: -0.1,
         USELESS_BOMB: -0.025,
-        # NB: The agent receives a penalty of -(self.CONFIG["DISCOUNT_RATE"] * 0.1) for placing a bomb due to the potential so we compensate this in USEFUL_BOMB
-        USEFUL_BOMB: self.CONFIG["DISCOUNT_RATE"] * 0.1 + 0.025 * (1 + math.ceil(num_crates_attacked / 3)),
+        # NB: The agent receives a penalty of -0.1 for placing a bomb due to the potential so we compensate this in USEFUL_BOMB
+        USEFUL_BOMB: 0.1 + 0.025 * (1 + math.ceil(num_crates_attacked / 3)),
         TRAPPED_ITSELF: -0.5,
         # Penalize the agent for dying by the number of coins left (normalized)
         e.GOT_KILLED: -(s.SCENARIOS["loot-crate"]["COIN_COUNT"] - state["self"][1])/s.SCENARIOS["loot-crate"]["COIN_COUNT"] 
@@ -234,6 +235,12 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
 
     # Add reward shaping based on the potential of the state and the next state
     reward_sum += self.CONFIG["DISCOUNT_RATE"] * potential_of_state(next_state) - potential_of_state(state)    
+
+    # Add reward shaping based on the danger potential of the state and the next state
+    # IMPORTANT: For the danger potential, we must use a discount factor of 1,
+    #            otherwise the agent gets a positive reward for entering and leaving
+    #            the blast coordinates.
+    reward_sum += danger_potential_of_state(next_state) - danger_potential_of_state(state)    
 
     # Log the reward and the events
     #self.logger.info(f"Awarded {reward_sum} for potential difference and for events {", ".join(events)}")
