@@ -3,6 +3,7 @@ import random
 import torch
 import wandb
 import numpy as np
+from collections import deque
 from pathfinding.core.grid import Grid
 from pathfinding.finder.bi_a_star import BiAStarFinder
 from typing import Tuple, Union, List
@@ -469,7 +470,7 @@ def move_optimizer_to_device(optimizer, device: torch.device) -> None:
                         subparam._grad.data = subparam._grad.data.to(device)
 
 
-def distance(a: Tuple, b: Tuple) -> int:
+def manhattan_distance(a: Tuple, b: Tuple) -> int:
     """ Calculate the (Manhattan) distance between two points a and b in the grid.
     Args:
         a (Tuple): The first point.
@@ -494,19 +495,15 @@ def distance(a: Tuple, b: Tuple) -> int:
     return distance
 
 
-def potential_of_state(state: Union[dict, None]) -> float:
-    """ Calculate the potential of the state.
-
+def distance_to_nearest_coin(state: Union[dict, None]) -> Union[float, None]:
+    """ Calculate the distance to the nearest coin.
+        Returns None if there is no visible coin.
     Args:
-        state (Union[dict, None]): The state to calculate the potential of.
+        state (Union[dict, None]): The state for which compute the distance.
 
     Returns:
-        float: The potential of the state.
+        Union[float, None]: The distance to the nearest coin.
     """
-
-    # Check if the state is None
-    if state is None:
-        return 0.0
 
     # Prepare the grid for the pathfinding algorithm (> 0: obstacle; <= 0: free)
     numpy_grid = np.abs(np.copy(state["field"]))
@@ -537,11 +534,100 @@ def potential_of_state(state: Union[dict, None]) -> float:
         if (nearest_coin_distance == None or distance_to_coin < nearest_coin_distance) and distance_to_coin > 0:
             nearest_coin_distance = distance_to_coin
 
-    if nearest_coin_distance is None:
+    return nearest_coin_distance
+
+
+def distance_to_nearest_crate(state: Union[dict, None]) -> Union[float, None]:
+    """ Calculate the distance to the nearest coin.
+        Returns None if there is no visible crate.
+    Args:
+        state (Union[dict, None]): The state for which compute the distance.
+
+    Returns:
+        Union[float, None]: The distance to the nearest crate.
+    """
+
+    # Prepare the grid for the pathfinding algorithm (-1: obstacle; 0: free, 1: crate)
+    field = np.copy(state["field"])
+    # Consider also bombs as obstacles
+    for bomb in state["bombs"]:
+        field[bomb[0]] = -1
+    
+    # Get the position of the agent
+    agent_position = state["self"][3]
+
+    # Get a list of all blast coordinates of all bombs
+    all_bomb_blast_coord = []
+    for bomb in state["bombs"]:
+        all_bomb_blast_coord.extend(get_bomb_blast_coords(bomb[0][0], bomb[0][1], state["field"]))
+
+    # Directions for movement: UP, RIGHT, LEFT, DOWN
+    directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+
+    # Initialize the BFS queue and visited set
+    queue = deque()
+    queue.append([agent_position, 0])
+    visited = set()
+    visited.add(agent_position)
+
+    # Perform BFS
+    while queue:
+        (curr_x, curr_y), distance = queue.popleft()
+        # Check if the current position is a crate
+        if field[curr_x][curr_y] == 1:
+            # If so, we have found the distance to the nearest crate
+            return distance 
+
+        # Otherwise, explore neighbors
+        for dx, dy in directions:
+            neighbor_x, neighbor_y = curr_x + dx, curr_y + dy
+
+            # Check if the neighbor is within the grid bounds
+            if 0 <= neighbor_x < s.COLS and 0 <= neighbor_y < s.ROWS:
+                # Check if the neighbor is not an obstacle and not visited
+                # IMPORTANT: If the neighbor is a crate, we must ensure that neither the current position (i.e. last position of path to crate)
+                #            nor the position of the crate itself is in any of the bomb blast coordinates. 
+                #            This ensures that no sub-optimal crate is targeted
+                if ((neighbor_x, neighbor_y) not in visited 
+                    and (field[neighbor_x][neighbor_y] == 0 # Neighbor is a free tile
+                        or (field[neighbor_x][neighbor_y] == 1 # Neighbor is a crate
+                           and not (curr_x, curr_y) in all_bomb_blast_coord
+                           and not (neighbor_x, neighbor_y) in all_bomb_blast_coord))):
+                    visited.add((neighbor_x, neighbor_y))
+                    queue.append([(neighbor_x, neighbor_y), distance + 1])
+
+    # When the queue is empty, we have not found a nearest create
+    return None
+
+
+def potential_of_state(state: Union[dict, None]) -> float:
+    """ Calculate the potential of the state.
+
+    Args:
+        state (Union[dict, None]): The state to calculate the potential of.
+
+    Returns:
+        float: The potential of the state.
+    """
+
+    # Check if the state is None
+    if state is None:
         return 0.0
 
-    return 1.2 ** (-nearest_coin_distance)
-
+    # Check if there is any visible coin
+    if len(state["coins"]) > 0:
+        # If so, get the distance to the nearest coin
+        nearest_coin_distance = distance_to_nearest_coin(state)
+        # Return the potential based on the distance to the nearest coin
+        return 1.2 ** (-nearest_coin_distance) if nearest_coin_distance is not None else 0.0
+    else:
+        # Otherwise, get the distance to the nearest crate
+        nearest_crate_distance = distance_to_nearest_crate(state)
+        # Return the potential based on the distance to the nearest crate
+        # IMPORTANT: We add here + 1 to the negative of nearest_crate_distance since without it, the
+        #            the exponent can never get 0            
+        return (1.2 ** (-nearest_crate_distance + 1)) / 4 if nearest_crate_distance is not None else 0.0
+   
 
 def danger_potential_of_state(state: Union[dict, None]) -> float:
     """ Calculate the danger potential of the state.
@@ -566,7 +652,7 @@ def danger_potential_of_state(state: Union[dict, None]) -> float:
     danger_penalty = 0
     for bomb in state["bombs"]:
         # Calculate the (Manhattan) distance to the bomb
-        distance_to_bomb = distance(agent_position, bomb[0])
+        distance_to_bomb = manhattan_distance(agent_position, bomb[0])
         # Only look at bombs where the agent could be in the blast coordinates
         if distance_to_bomb <= s.BOMB_POWER:
             # Get the blast coordinates of the bomb

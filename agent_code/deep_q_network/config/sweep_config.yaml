@@ -27,7 +27,7 @@ parameters:
   TRANSFORM_BATCH_RANDOMLY:
     value: false
   USE_DANGER_POTENTIAL:
-    values: [true, false]
+    values: [false, true]
   NUM_EPOCHS: 
     value: 3
   START_FROM:  

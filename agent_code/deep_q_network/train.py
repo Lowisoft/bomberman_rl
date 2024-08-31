@@ -219,9 +219,17 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         e.COIN_COLLECTED: 1,
         e.KILLED_OPPONENT: 5,
         e.INVALID_ACTION: -0.1,
-        USELESS_BOMB: -0.025 if self.CONFIG["USE_DANGER_POTENTIAL"] else -0.05,
         # NB: The agent receives a penalty of -0.1 for placing a bomb due to the potential so we compensate this in USEFUL_BOMB
-        USEFUL_BOMB: 0.1 + 0.05 * (1 + (num_crates_attacked - 1) / 8) if self.CONFIG["USE_DANGER_POTENTIAL"] else 0.05 * (1 + (num_crates_attacked - 1) / 8),
+        # NB2: The agent receives a penalty of at most -0.25 for dropping down in the crate potential function since now the distance to 
+        #      another crate is used, which is further away. Note that the agent drops at least -0.09 because the next crate that is 
+        #      not in a blast coordinate and for which the last tile of the path is also not in a blast coordinate is at least 4 steps
+        #      away (crate_pot(4) - crate_pot(1) = -0.09). Besides, in a 11 x 11 field, the max distance to a crate is 16 and crate_pot(16) = 0.195.
+        #      Thus, the total possible range of USEFUL_BOMB is 0.06 [= 0.25 - 0.195 + 0.05] to 0.21 [= 0.25 - 0.09 + 0.05] depending on the number of crates attacked
+        USEFUL_BOMB: 0.25 + 0.05 * (1 + (num_crates_attacked - 1) / 8) + (0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else 0.0),
+        # NB: Similar to USEFUL_BOMB, the agent receives a penalty of -0.1 for placing a bomb due to the potential but we do NOT compoensate this in USELESS_BOMB, since
+        #     it should remain a penalty (negative)
+        # NB2: Contrary to USEFUL_BOMB, the crate potential function does not drop down (since no crate attacked) and thus it does NOT have to be compensated.
+        USELESS_BOMB: -0.025 if self.CONFIG["USE_DANGER_POTENTIAL"] else -0.05,
         TRAPPED_ITSELF: -0.5,
         # Penalize the agent for dying by the number of coins left (normalized)
         e.GOT_KILLED: -(s.SCENARIOS["loot-crate"]["COIN_COUNT"] - state["self"][1])/s.SCENARIOS["loot-crate"]["COIN_COUNT"] 
