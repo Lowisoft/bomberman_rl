@@ -240,7 +240,7 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
     # IMPORTANT: For the danger potential, we must use a discount factor of 1,
     #            otherwise the agent gets a positive reward for entering and leaving
     #            the blast coordinates.
-    self.CONFIG["USE_DANGER_POTENTIAL"]:
+    if self.CONFIG["USE_DANGER_POTENTIAL"]:
         reward_sum += danger_potential_of_state(next_state) - danger_potential_of_state(state)    
 
     # Log the reward and the events
