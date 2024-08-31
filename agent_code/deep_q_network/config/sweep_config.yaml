@@ -39,6 +39,6 @@ command:
   - play
   - --agents=deep_q_network
   - --train=1
-  - --n-rounds=500000
+  - --n-rounds=750000
   - --scenario=loot-crate
   - --no-gui
