@@ -231,7 +231,7 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         # NB: Similar to USEFUL_BOMB, the agent receives a penalty of -0.1 for placing a bomb due to the potential but we do NOT compoensate this in USELESS_BOMB, since
         #     it should remain a penalty (negative)
         # NB2: Contrary to USEFUL_BOMB, the crate potential function does not drop down (since no crate attacked) and thus it does NOT have to be compensated.
-        USELESS_BOMB: -0.025 if self.CONFIG["USE_DANGER_POTENTIAL"] else -0.05,
+        USELESS_BOMB: -0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else -0.15,
         TRAPPED_ITSELF: -0.5,
         # Penalize the agent for dying by the number of coins left (normalized)
         e.GOT_KILLED: -(s.SCENARIOS["loot-crate"]["COIN_COUNT"] - state["self"][1])/s.SCENARIOS["loot-crate"]["COIN_COUNT"] 
