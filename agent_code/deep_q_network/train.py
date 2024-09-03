@@ -21,13 +21,15 @@ from .utils import (
     potential_of_state,
     danger_potential_of_state, 
     num_crates_in_blast_coords,
-    agent_has_trapped_itself
+    agent_has_trapped_itself,
+    action_index_to_str
 )
 
 # Custom events
 USELESS_BOMB = "USELESS_BOMB"
 USEFUL_BOMB = "USEFUL_BOMB"
 TRAPPED_ITSELF = "TRAPPED_ITSELF"
+USELESS_WAIT = "USELESS_WAIT"
 
 
 def setup_training(self) -> None:
@@ -52,6 +54,11 @@ def setup_training(self) -> None:
     # Initialize the experience replay memory
     self.buffer = ExperienceReplayBuffer(
         buffer_capacity=self.CONFIG["BUFFER_CAPACITY"], 
+        device=self.device,
+        transform_batch_randomly=self.CONFIG["TRANSFORM_BATCH_RANDOMLY"])
+    # Initialize the prioritized experience replay memory
+    self.prioritized_buffer = ExperienceReplayBuffer(
+        buffer_capacity=self.CONFIG["PRIORITIZED_BUFFER_CAPACITY"], 
         device=self.device,
         transform_batch_randomly=self.CONFIG["TRANSFORM_BATCH_RANDOMLY"])
     # Initalize the optimizer
@@ -197,6 +204,10 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         int: The reward for the action taken in the state.
     """
 
+    # Check if the agent performed a useless wait, i.e. waits but no bomb dropped
+    if action == "WAIT" and e.WAITED in events and state["self"][2]: 
+        events.append(USELESS_WAIT)
+
     # Initialize the number of crates attacked by the dropped bomb
     # NB: This variable is only used when BOMB_DROPPED is in events
     num_crates_attacked = 0
@@ -221,6 +232,7 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         e.COIN_COLLECTED: 1,
         e.KILLED_OPPONENT: 5,
         e.INVALID_ACTION: -0.1,
+        USELESS_WAIT: -0.1,
         # NB: The agent receives a penalty of -0.1 for placing a bomb due to the potential so we compensate this in USEFUL_BOMB
         # NB2: The agent receives a penalty of at most -0.25 for dropping down in the crate potential function since now the distance to 
         #      another crate is used, which is further away. Note that the agent drops at least -0.09 because the next crate that is 
@@ -267,6 +279,7 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
         action (str): The action taken in the state.
         reward (float): The reward received after taking the action.
         next_state (Union[dict, None]): The next state of the environment. None if the round/game has ended by death of the agent.
+        events (List[str]): The events that occurred when going from the state to the next state.
         score (int): The score of the agent in the next state.
         change_world_seed (function): Function to change the seed of the world.
         is_end_of_round (bool, optional): Whether the round/game has ended. Defaults to False.
@@ -325,6 +338,24 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
                     path=self.CONFIG["PATH"])
     # Otherwise the agent is in training mode
     else:
+        # Check if we should prioritize an action of a loop
+        if self.prioritized_action is not None:
+            # If so, add it to the prioritized buffer
+            self.prioritized_buffer.push(
+                state=state_to_features(state), 
+                action=self.prioritized_action, 
+                reward=get_reward(self, state=state, action=self.prioritized_action, next_state=next_state, events=events), 
+                next_state=state_to_features(next_state))
+            # Reset the priortized action
+            self.prioritized_action = None
+            # Check if the reversed/previous action should also be prioritized
+            if self.prioritize_prev_action:
+                # If so, add the last experience of the main buffer to the prioritized buffer
+                # NB: We must convert the action back to a string
+                last_elem = self.buffer.get_last_added_elem()
+                self.prioritized_buffer.push(last_elem[0], action_index_to_str(last_elem[1]), last_elem[2], last_elem[3])
+                # Reset whether the last action should be prioritized
+                self.prioritize_prev_action = False
         # Store the experience in the buffer
         self.buffer.push(state=state_to_features(state), action=action, reward=reward, next_state=state_to_features(next_state))
         # Update the exploration rate
@@ -415,9 +446,17 @@ def train_network(self) -> None:
 
     # Set the local network to training mode
     self.local_q_network.train()
-    for i in range(self.CONFIG["NUM_EPOCHS"]):
+    for i in range(self.CONFIG["NUM_EPOCHS"] + 1):
+        # Append an epoch where the buffer is the prioritized buffer
+        if i == self.CONFIG["NUM_EPOCHS"]:
+            # Do not use the prioritized buffer if it is not full yet or if the frequency is not met
+            if len(self.prioritized_buffer) < self.CONFIG["PRIORITIZED_BUFFER_MIN_SIZE"] or self.training_steps % self.CONFIG["PRIORITIZED_TRAINING_FREQUENCY"] != 0:
+                break
+            buffer = self.prioritized_buffer
+        else: 
+            buffer = self.buffer
         # Sample a batch of experiences from the buffer
-        states, actions, rewards, next_states, dones = self.buffer.sample(batch_size=self.CONFIG["BATCH_SIZE"])
+        states, actions, rewards, next_states, dones = buffer.sample(batch_size=self.CONFIG["BATCH_SIZE"])
         # Get the Q-values of the taken actions for the states from the local Q-network
         # NB: Add a dummy dimension with unsqueeze(1) for the actions to obtain the shape (batch_size, 1)
         #     This is necessary because .gather requires the shape of the actions to match the shape of the output of the local Q-network
