@@ -462,12 +462,28 @@ def train_network(self) -> None:
         #     This is necessary because .gather requires the shape of the actions to match the shape of the output of the local Q-network
         # NB: Remove the dummy dimension with squeeze(1) to obtain the shape (batch_size, ) for q_values  
         q_values = self.local_q_network(states).gather(dim=1, index=actions.unsqueeze(1)).squeeze(1)
-        # Get the maximum of the Q-values of the actions for the next states from the target Q-network
-        # NB: Detach the tensor to prevent backpropagation through the target Q-network
-        # The shape of next_q_values_max is (batch_size, )
-        next_q_values_max = self.target_q_network(next_states).detach().max(dim=1)[0]        
+
+        # Initialize the next Q-values
+        next_q_values = None
+
+        if self.CONFIG["USE_DOUBLE_DQN"]:
+            # Use the local Q-network to select the best actions (with the highest Q-value) for the next states
+            next_actions = self.local_q_network(next_states).argmax(dim=1)
+
+            # Use the target Q-network to compute the Q-values of the next states for the actions chosen by the local Q-network
+            # NB: Add a dummy dimension with unsqueeze(1) for the actions to obtain the shape (batch_size, 1)
+            #     This is necessary because .gather requires the shape of the actions to match the shape of the output of the target Q-network
+            # NB2: Detach the tensor to prevent backpropagation through the target Q-network
+            # NB3: Remove the dummy dimension with squeeze(1) to obtain the shape (batch_size, ) for q_values  
+            # The shape of next_q_values is (batch_size, )
+            next_q_values = self.target_q_network(next_states).gather(dim=1, index=next_actions.unsqueeze(1)).detach().squeeze(1) 
+        else: 
+            # Get the maximum of the Q-values of the actions for the next states from the target Q-network
+            # NB: Detach the tensor to prevent backpropagation through the target Q-network
+            # The shape of next_q_values is (batch_size, )
+            next_q_values = self.target_q_network(next_states).detach().max(dim=1)[0]        
         # Calculate the target Q-values
-        target_q_values = rewards + self.CONFIG["DISCOUNT_RATE"] * next_q_values_max * (1 - dones)
+        target_q_values = rewards + self.CONFIG["DISCOUNT_RATE"] * next_q_values * (1 - dones)
         # Compute the MSE loss
         loss = self.loss_function(q_values, target_q_values)
         # Reset the gradients
