@@ -9,12 +9,15 @@ from ..utils import action_str_to_index
 
 
 class ExperienceReplayBuffer(object):
-    def __init__(self, buffer_capacity: int, device: torch.device, transform_batch_randomly: bool = False) -> None:
+    def __init__(self, buffer_capacity: int, device: torch.device, discount_rate: float, transform_batch_randomly: bool = False, n_steps: int = 1) -> None:
         """ Initializes the experience replay buffer.
 
         Args:
             buffer_capacity (int): The maximum number of experiences that can be stored in the buffer.
             device (torch.device): The device to be used.
+            discount_rate (float): The discount rate. Only used if n_steps is greater than 1, i.e. a larger temporal differencing should be used
+            transform_batch_randomly (bool, optional):  Whether the sampled batch should be transformed randomly. Default is False.
+            n_steps (int, optional): The number of steps used when computing the temporal difference. Default is 1.
         """
 
         # Initialize the buffer
@@ -23,6 +26,14 @@ class ExperienceReplayBuffer(object):
         self.device = device
         # Whether the sampled batch should be transformed randomly
         self.transform_batch_randomly = transform_batch_randomly
+        # The number of steps used when computing the temporal difference
+        self.n_steps = n_steps
+        # Check if a larger temporal differencing should be used
+        if self.n_steps > 1:
+            # Set the discount rate
+            self.discount_rate = discount_rate
+            # Initialize the temporary buffer
+            self.temporary_buffer = deque(maxlen=self.n_steps)
 
 
     def __len__(self) -> int:
@@ -49,12 +60,49 @@ class ExperienceReplayBuffer(object):
             state (np.ndarray): The current state of the environment.
             action (str): The action taken in the state.
             reward (float): The reward received after taking the action.
-            next_state (Union[np.ndarray, None]): The next state of the environment. None if the round/game has ended by death of the agent.
+            next_state (Union[np.ndarray, None]): The next state of the environment. None if the round/game has ended.
         """
+        if self.n_steps <= 1:
+            # Add the experience to the buffer
+            self.buffer.append((state, action_str_to_index(action), reward, next_state))
+        else:
+            # Push the current experience to the temporary buffer
+            self.temporary_buffer.append((state, action_str_to_index(action), reward, next_state))
+            # Check if the round/game finished
+            if next_state is None: 
+                # If so, clear the temporary buffer by adding the remaining experiences in the temporary buffer
+                while len(self.temporary_buffer) > 0:
+                    # Calculate the cumulative reward and append it to the buffer
+                    self.compute_cumulative_reward_and_add_to_buffer()
+                    # Remove the oldest experience
+                    self.temporary_buffer.popleft()
+            # Otherwise, if we have n experiences, calculate the cumulative reward of the oldest experience and append it to the buffer
+            elif len(self.temporary_buffer) == self.n_steps:
+                self.compute_cumulative_reward_and_add_to_buffer()  
+                # Remove the oldest experience
+                self.temporary_buffer.popleft()
 
-        # Add the experience to the buffer
-        self.buffer.append((state, action_str_to_index(action), reward, next_state))
-    
+
+    def compute_cumulative_reward_and_add_to_buffer(self) -> None:
+        """ Computes the cumulative reward of the oldest experience in the temporary buffer
+            and adds it to the main buffer.
+        """
+        
+        # Compute the cumulative reward over the temporal buffer
+        cumulative_reward = 0.0
+        discount = 1.0
+        for i in range(len(self.temporary_buffer)):
+            cumulative_reward += discount * self.temporary_buffer[i][2] 
+            discount *= self.discount_rate
+ 
+        # Store the experience with the cumulative reward in the replay buffer
+        self.buffer.append((
+            self.temporary_buffer[0][0], # State of the oldest experience in the temporary buffer
+            self.temporary_buffer[0][1], # Action of the oldest experience in the temporary buffer
+            cumulative_reward, # Cumulative reward over the entire temporary buffer 
+            self.temporary_buffer[-1][3], # Next state of the youngest experience in the buffer
+        ))   
+
 
     def sample(self, batch_size: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Samples a batch of experiences from the buffer.

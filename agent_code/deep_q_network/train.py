@@ -55,12 +55,16 @@ def setup_training(self) -> None:
     self.buffer = ExperienceReplayBuffer(
         buffer_capacity=self.CONFIG["BUFFER_CAPACITY"], 
         device=self.device,
-        transform_batch_randomly=self.CONFIG["TRANSFORM_BATCH_RANDOMLY"])
+        discount_rate=self.CONFIG["DISCOUNT_RATE"],
+        transform_batch_randomly=self.CONFIG["TRANSFORM_BATCH_RANDOMLY"],
+        n_steps=self.CONFIG["TD_STEPS"])
     # # Initialize the prioritized experience replay memory
     # self.prioritized_buffer = ExperienceReplayBuffer(
     #     buffer_capacity=self.CONFIG["PRIORITIZED_BUFFER_CAPACITY"], 
     #     device=self.device,
-    #     transform_batch_randomly=self.CONFIG["TRANSFORM_BATCH_RANDOMLY"])
+    #     discount_rate=self.CONFIG["DISCOUNT_RATE"],
+    #     transform_batch_randomly=self.CONFIG["TRANSFORM_BATCH_RANDOMLY"],
+    #     n_steps=self.CONFIG["TD_STEPS"])
     # Initalize the optimizer
     if self.CONFIG["OPTIMIZER"] == "Adam":
         self.optimizer = torch.optim.Adam(self.local_q_network.parameters(), lr=self.CONFIG["LEARNING_RATE"])
@@ -158,9 +162,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
             next_state=new_game_state,
             events=events,
             score=new_game_state["self"][1],
-            change_world_seed=new_game_state["change_world_seed"],
-            is_end_of_round=False
-    )
+            change_world_seed=new_game_state["change_world_seed"])
 
 
 def end_of_round(self, last_game_state: dict, last_action: str, events: List[str]) -> None:
@@ -187,8 +189,7 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     next_state=None,
     events=events,
     score=last_game_state["self"][1],
-    change_world_seed=last_game_state["change_world_seed"],
-    is_end_of_round=True)
+    change_world_seed=last_game_state["change_world_seed"])
 
 
 def get_reward(self, state: dict, action: str, next_state: Union[dict, None], events: List[str]) -> int:
@@ -197,7 +198,7 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
     Args:
         state (dict): The state before the action was taken.
         action (str): The action taken in the state.
-        next_state (Union[dict, None]): The state after the action was taken. None if the round/game has ended by death of the agent.
+        next_state (Union[dict, None]): The state after the action was taken. None if the round/game has ended.
         events (List[str]): The events that occurred when going from the state to the next state.
 
     Returns:
@@ -271,19 +272,21 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
     return reward_sum
 
 
-def handle_step(self, state: dict, action: str, reward: float, next_state: Union[dict, None], events: List[str], score: int, change_world_seed, is_end_of_round: bool = False) -> None:
+def handle_step(self, state: dict, action: str, reward: float, next_state: Union[dict, None], events: List[str], score: int, change_world_seed) -> None:
     """ Handle a training step in the environment.
 
     Args:
         state (dict): The current state of the environment.
         action (str): The action taken in the state.
         reward (float): The reward received after taking the action.
-        next_state (Union[dict, None]): The next state of the environment. None if the round/game has ended by death of the agent.
+        next_state (Union[dict, None]): The next state of the environment. None if the round/game has ended.
         events (List[str]): The events that occurred when going from the state to the next state.
         score (int): The score of the agent in the next state.
         change_world_seed (function): Function to change the seed of the world.
-        is_end_of_round (bool, optional): Whether the round/game has ended. Defaults to False.
     """
+
+    # The round/game has ended if the next state is None
+    is_end_of_round = (next_state == None)    
 
     # Check if the agent is tested during training
     if self.test_training:

@@ -236,7 +236,7 @@ def agent_has_trapped_itself(state: dict,  action: str, next_state: Union[dict, 
     Args:
         state (dict): The state before the action was taken.
         action (str): The action taken in the state.
-        next_state (Union[dict, None]): The state after the action was taken. None if the round/game has ended by death of the agent.
+        next_state (Union[dict, None]): The state after the action was taken. None if the round/game.
         events (List[str]): The events that occurred when going from the state to the next state.
 
     Returns:
