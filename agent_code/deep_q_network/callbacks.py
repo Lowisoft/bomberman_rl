@@ -6,7 +6,6 @@ import numpy as np
 #from collections import deque # ONLY FOR TRAINING
 import wandb # ONLY FOR TRAINING
 from datetime import datetime # ONLY FOR TRAINING
-from zoneinfo import ZoneInfo # ONLY FOR TRAINING
 import settings as s
 from typing import Union
 from .utils import action_index_to_str, crop_channel, get_bomb_blast_coords, load_network, action_str_to_index
@@ -33,14 +32,11 @@ def setup(self) -> None:
         self.CONFIG = yaml.safe_load(file)
 
     if self.train:
-        # Define the Berlin timezone
-        berlin_tz = ZoneInfo('Europe/Berlin')
-        # Get the current UTC time and convert it to Berlin timezone
-        now_utc = datetime.now(tz=ZoneInfo('UTC'))
-        now_berlin = now_utc.astimezone(berlin_tz)
+        # Get the current time
+        now = datetime.now()
         
         # Create a unique name for the run
-        self.run_name = f"{self.CONFIG['PROJECT_NAME_SHORT']}_{now_berlin.strftime("%y%m%d%H%M%S")}"
+        self.run_name = f"{self.CONFIG['PROJECT_NAME_SHORT']}_{now.strftime("%y%m%d%H%M%S")}"
 
         # Initialize the wandb run
         self.run = wandb.init(
