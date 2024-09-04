@@ -29,7 +29,7 @@ class Network(nn.Module):
             # Input: (batch_size, 16, column_size - 2, row_size - 2)
             # Output: (batch_size, 16 * (column_size - 2) * (row_size - 2))
             nn.Flatten(),
-            # Input: (batch_size, 6 * (column_size - 2) * (row_size - 2))
+            # Input: (batch_size, 16 * (column_size - 2) * (row_size - 2))
             # Output: (batch_size, hidden_layer_size)
             nn.Linear(16 * (column_size - 2) * (row_size - 2), hidden_layer_size),
             nn.ReLU(),
