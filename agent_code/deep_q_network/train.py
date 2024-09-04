@@ -56,11 +56,11 @@ def setup_training(self) -> None:
         buffer_capacity=self.CONFIG["BUFFER_CAPACITY"], 
         device=self.device,
         transform_batch_randomly=self.CONFIG["TRANSFORM_BATCH_RANDOMLY"])
-    # Initialize the prioritized experience replay memory
-    self.prioritized_buffer = ExperienceReplayBuffer(
-        buffer_capacity=self.CONFIG["PRIORITIZED_BUFFER_CAPACITY"], 
-        device=self.device,
-        transform_batch_randomly=self.CONFIG["TRANSFORM_BATCH_RANDOMLY"])
+    # # Initialize the prioritized experience replay memory
+    # self.prioritized_buffer = ExperienceReplayBuffer(
+    #     buffer_capacity=self.CONFIG["PRIORITIZED_BUFFER_CAPACITY"], 
+    #     device=self.device,
+    #     transform_batch_randomly=self.CONFIG["TRANSFORM_BATCH_RANDOMLY"])
     # Initalize the optimizer
     if self.CONFIG["OPTIMIZER"] == "Adam":
         self.optimizer = torch.optim.Adam(self.local_q_network.parameters(), lr=self.CONFIG["LEARNING_RATE"])
@@ -100,8 +100,8 @@ def setup_training(self) -> None:
     self.training_destroyed_crates_of_round = 0
     # Initialize the number of bombs dropped per round/game during training
     self.training_dropped_bombs_of_round = 0
-    # Initialize the number of loops broken per round/game during training
-    self.training_broken_loops_of_round = 0
+    # # Initialize the number of loops broken per round/game during training
+    # self.training_broken_loops_of_round = 0
     # Initialize the start time of the training
     self.training_start_time = time.time()
     # Initialize whether the agent is tested during training on a set of rounds/games with a fixed seed 
@@ -338,24 +338,24 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
                     path=self.CONFIG["PATH"])
     # Otherwise the agent is in training mode
     else:
-        # Check if we should prioritize an action of a loop
-        if self.prioritized_action is not None:
-            # If so, add it to the prioritized buffer
-            self.prioritized_buffer.push(
-                state=state_to_features(state), 
-                action=self.prioritized_action, 
-                reward=get_reward(self, state=state, action=self.prioritized_action, next_state=next_state, events=events), 
-                next_state=state_to_features(next_state))
-            # Reset the priortized action
-            self.prioritized_action = None
-            # Check if the reversed/previous action should also be prioritized
-            if self.prioritize_prev_action:
-                # If so, add the last experience of the main buffer to the prioritized buffer
-                # NB: We must convert the action back to a string
-                last_elem = self.buffer.get_last_added_elem()
-                self.prioritized_buffer.push(last_elem[0], action_index_to_str(last_elem[1]), last_elem[2], last_elem[3])
-                # Reset whether the last action should be prioritized
-                self.prioritize_prev_action = False
+        # # Check if we should prioritize an action of a loop
+        # if self.prioritized_action is not None:
+        #     # If so, add it to the prioritized buffer
+        #     self.prioritized_buffer.push(
+        #         state=state_to_features(state), 
+        #         action=self.prioritized_action, 
+        #         reward=get_reward(self, state=state, action=self.prioritized_action, next_state=next_state, events=events), 
+        #         next_state=state_to_features(next_state))
+        #     # Reset the priortized action
+        #     self.prioritized_action = None
+        #     # Check if the reversed/previous action should also be prioritized
+        #     if self.prioritize_prev_action:
+        #         # If so, add the last experience of the main buffer to the prioritized buffer
+        #         # NB: We must convert the action back to a string
+        #         last_elem = self.buffer.get_last_added_elem()
+        #         self.prioritized_buffer.push(last_elem[0], action_index_to_str(last_elem[1]), last_elem[2], last_elem[3])
+        #         # Reset whether the last action should be prioritized
+        #         self.prioritize_prev_action = False
         # Store the experience in the buffer
         self.buffer.push(state=state_to_features(state), action=action, reward=reward, next_state=state_to_features(next_state))
         # Update the exploration rate
@@ -381,8 +381,6 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
             self.start_test_training_next_round = True
         # Check if the round/game has ended
         if is_end_of_round:
-            # Clear the loop buffer
-            self.loop_buffer.clear()
             # Increment the number of rounds/games performed in training
             self.training_rounds += 1
             # Log the stats of the round/game during training
@@ -390,7 +388,7 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
                 "training_reward_of_round": self.training_reward_of_round,
                 "training_destroyed_crates_of_round": self.training_destroyed_crates_of_round,
                 "training_dropped_bombs_of_round": self.training_dropped_bombs_of_round,
-                "training_broken_loops_of_round": self.training_broken_loops_of_round,
+                #"training_broken_loops_of_round": self.training_broken_loops_of_round,
                 "training_score_of_round": score, 
                 "training_steps_of_round": state["step"],
                 "training_round": self.training_rounds,
@@ -402,8 +400,10 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
             self.training_destroyed_crates_of_round = 0
             # Reset the number of dropped bombs in the round/game during training
             self.training_dropped_bombs_of_round = 0
-            # Reset the number of broken loops in the round/game during training
-            self.training_broken_loops_of_round = 0
+            # # Clear the loop buffer
+            # self.loop_buffer.clear()
+            # # Reset the number of broken loops in the round/game during training
+            # self.training_broken_loops_of_round = 0
             # Check if the maximum runtime is reached
             if "MAX_RUNTIME" in self.CONFIG and self.CONFIG["MAX_RUNTIME"] is not None and time.time() - self.training_start_time > self.CONFIG["MAX_RUNTIME"]:
                 print("Maximum runtime reached.")
@@ -446,17 +446,17 @@ def train_network(self) -> None:
 
     # Set the local network to training mode
     self.local_q_network.train()
-    for i in range(self.CONFIG["NUM_EPOCHS"] + 1):
-        # Append an epoch where the buffer is the prioritized buffer
-        if i == self.CONFIG["NUM_EPOCHS"]:
-            # Do not use the prioritized buffer if it is not full yet or if the frequency is not met
-            if len(self.prioritized_buffer) < self.CONFIG["PRIORITIZED_BUFFER_MIN_SIZE"] or self.training_steps % self.CONFIG["PRIORITIZED_TRAINING_FREQUENCY"] != 0:
-                break
-            buffer = self.prioritized_buffer
-        else: 
-            buffer = self.buffer
+    for i in range(self.CONFIG["NUM_EPOCHS"]):
+        # # Append an epoch where the buffer is the prioritized buffer
+        # if i == self.CONFIG["NUM_EPOCHS"]:
+        #     # Do not use the prioritized buffer if it is not full yet or if the frequency is not met
+        #     if len(self.prioritized_buffer) < self.CONFIG["PRIORITIZED_BUFFER_MIN_SIZE"] or self.training_steps % self.CONFIG["PRIORITIZED_TRAINING_FREQUENCY"] != 0:
+        #         break
+        #     buffer = self.prioritized_buffer
+        # else: 
+        #     buffer = self.buffer
         # Sample a batch of experiences from the buffer
-        states, actions, rewards, next_states, dones = buffer.sample(batch_size=self.CONFIG["BATCH_SIZE"])
+        states, actions, rewards, next_states, dones = self.buffer.sample(batch_size=self.CONFIG["BATCH_SIZE"])
         # Get the Q-values of the taken actions for the states from the local Q-network
         # NB: Add a dummy dimension with unsqueeze(1) for the actions to obtain the shape (batch_size, 1)
         #     This is necessary because .gather requires the shape of the actions to match the shape of the output of the local Q-network

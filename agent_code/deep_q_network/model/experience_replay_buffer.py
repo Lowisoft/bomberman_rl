@@ -34,13 +34,12 @@ class ExperienceReplayBuffer(object):
         return len(self.buffer)
 
 
-    def get_last_added_elem(self) -> Tuple[np.ndarray, str, float, np.ndarray]:
-        """ Returns the most last added element of the buffer.
-
-        Returns:
-            Tuple[np.ndarray, str, float, np.ndarray]: The most last added element of the buffer.
-        """
-        return self.buffer[-1] 
+    # def get_last_added_elem(self) -> Tuple[np.ndarray, str, float, np.ndarray]:
+    #     """ Returns the most last added element of the buffer.
+    #     Returns:
+    #         Tuple[np.ndarray, str, float, np.ndarray]: The most last added element of the buffer.
+    #     """
+    #     return self.buffer[-1] 
         
 
     def push(self, state: np.ndarray, action: str, reward: float, next_state: Union[np.ndarray, None]) -> None:

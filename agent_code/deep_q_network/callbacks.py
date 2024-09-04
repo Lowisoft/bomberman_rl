@@ -3,7 +3,7 @@ import yaml
 import torch
 import random
 import numpy as np
-from collections import deque # ONLY FOR TRAINING
+#from collections import deque # ONLY FOR TRAINING
 import wandb # ONLY FOR TRAINING
 from datetime import datetime # ONLY FOR TRAINING
 from zoneinfo import ZoneInfo # ONLY FOR TRAINING
@@ -11,7 +11,7 @@ import settings as s
 from typing import Union
 from .utils import action_index_to_str, crop_channel, get_bomb_blast_coords, load_network, action_str_to_index
 from .model.network import Network
-from .model.coin_collector_agent import coin_collector_act
+#from .model.coin_collector_agent import coin_collector_act
 
 def setup(self) -> None:
     """
@@ -51,12 +51,12 @@ def setup(self) -> None:
         # Make sure the same configuration is used for the agent and the wandb run
         self.CONFIG = self.run.config
 
-        # Initialize the loop buffer to detect and break loops
-        self.loop_buffer = deque(maxlen=self.CONFIG["LOOP_BUFFER_CAPACITY"])
-        # Initialize the action that is part of a loop and thus must be prioritized (to fix the loop)
-        self.prioritized_action = None
-        # Initialize whether the reversed/previous action is part of a loop and thus must also be prioritized
-        self.prioritize_prev_action = False
+        # # Initialize the loop buffer to detect and break loops
+        # self.loop_buffer = deque(maxlen=self.CONFIG["LOOP_BUFFER_CAPACITY"])
+        # # Initialize the action that is part of a loop and thus must be prioritized (to fix the loop)
+        # self.prioritized_action = None
+        # # Initialize whether the reversed/previous action is part of a loop and thus must also be prioritized
+        # self.prioritize_prev_action = False
 
     # Set the device to be used
     self.use_cuda = torch.cuda.is_available()
@@ -119,40 +119,39 @@ def act(self, game_state: dict) -> str:
         # NB: The .item() method returns the value of the tensor as a standard Python number
         action = action_index_to_str(torch.argmax(action_q_values, dim=1).item())
 
-    # NB: If the agent is not trained or if the agent is tested during training, loops are not broken
-    if self.train and not self.test_training:   
-        # Hash the features so that we can compare it better with recent states/features
-        features_hash = hash(features.tobytes())
-
-        # Count the number of repeating state-action pairs
-        repetitions = 0
-        repetition_indices = []
-        # Loop over the recent state-action pairs
-        for index, recent_state_action in enumerate(self.loop_buffer):
-            # Check for a repetition
-            if recent_state_action[0] == action and recent_state_action[1] == features_hash and np.array_equal(recent_state_action[2], features):
-                repetitions += 1
-                repetition_indices.append(index)
-            # If we have found at least 2 repetitions (so 3 equal state-action pairs in total), then break the loop
-            if repetitions >= 2:
-                # Ask the coin collector agent for the next action
-                new_action = coin_collector_act(self, game_state)
-                # Check if the coin collector chose a different action
-                if new_action is not action:
-                    # If so, prioritize the action chosen from the DQN (to learn from)
-                    self.prioritized_action = action
-                    # Check if the repetition is a 2-loop with a moving action, i.e. LEFT & RIGHT or UP & DOWN
-                    # NB: We also check if there is no bomb dropped
-                    if repetition_indices[1] == repetition_indices[0] + 2 and self.CONFIG["LOOP_BUFFER_CAPACITY"] == repetition_indices[1] + 2 and action_str_to_index(action) < 4 and game_state["self"][2]:
-                        # If so, also priortize the reversed/previous action
-                        self.prioritize_prev_action = True
-                    # Increment the number of broken loops in the round/game during training
-                    self.training_broken_loops_of_round += 1
-                    # Overwrite the action
-                    action = new_action
-                break
-        # Append the current state-action pair to the loop buffer
-        self.loop_buffer.append((action, features_hash, features))
+    # # NB: If the agent is not trained or if the agent is tested during training, loops are not broken
+    # if self.train and not self.test_training:   
+    #     # Hash the features so that we can compare it better with recent states/features
+    #     features_hash = hash(features.tobytes())
+    #     # Count the number of repeating state-action pairs
+    #     repetitions = 0
+    #     repetition_indices = []
+    #     # Loop over the recent state-action pairs
+    #     for index, recent_state_action in enumerate(self.loop_buffer):
+    #         # Check for a repetition
+    #         if recent_state_action[0] == action and recent_state_action[1] == features_hash and np.array_equal(recent_state_action[2], features):
+    #             repetitions += 1
+    #             repetition_indices.append(index)
+    #         # If we have found at least 2 repetitions (so 3 equal state-action pairs in total), then break the loop
+    #         if repetitions >= 2:
+    #             # Ask the coin collector agent for the next action
+    #             new_action = coin_collector_act(self, game_state)
+    #             # Check if the coin collector chose a different action
+    #             if new_action is not action:
+    #                 # If so, prioritize the action chosen from the DQN (to learn from)
+    #                 self.prioritized_action = action
+    #                 # Check if the repetition is a 2-loop with a moving action, i.e. LEFT & RIGHT or UP & DOWN
+    #                 # NB: We also check if there is no bomb dropped
+    #                 if repetition_indices[1] == repetition_indices[0] + 2 and self.CONFIG["LOOP_BUFFER_CAPACITY"] == repetition_indices[1] + 2 and action_str_to_index(action) < 4 and game_state["self"][2]:
+    #                     # If so, also priortize the reversed/previous action
+    #                     self.prioritize_prev_action = True
+    #                 # Increment the number of broken loops in the round/game during training
+    #                 self.training_broken_loops_of_round += 1
+    #                 # Overwrite the action
+    #                 action = new_action
+    #             break
+    #     # Append the current state-action pair to the loop buffer
+    #     self.loop_buffer.append((action, features_hash, features))
         
     #print("Action:", action)
     return action
