@@ -4,32 +4,8 @@ metric:
   goal: maximize
 
 parameters:
-  LEARNING_RATE:
-    value: 0.001
-  BATCH_SIZE:
-    value: 32
-  BUFFER_CAPACITY:
-    value: 50000
-  BUFFER_MIN_SIZE:
-    value: 10000
-  HIDDEN_LAYER_SIZE:
-    value: 128
-  EXPLORATION_RATE_DECAY:
-    value: 0.9999995
-  DISCOUNT_RATE:
-    value: 0.93
-  TRAINING_FREQUENCY:
-    value: 50
-  TARGET_UPDATE_FREQUENCY:
-    value: 5000
-  OPTIMIZER:
-    value: "Adam" # Adam, RMSprop, SGD
-  TRANSFORM_BATCH_RANDOMLY:
-    value: false
-  USE_DANGER_POTENTIAL:
-    values: [false, true]
-  NUM_EPOCHS: 
-    value: 3
+  TD_STEPS:
+    values: [3, 5]
   START_FROM:  
     value: null # null, best, last (usually you want to start the sweep from scratch)
 project: deep_q_network
