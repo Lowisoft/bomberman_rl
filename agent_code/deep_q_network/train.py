@@ -104,8 +104,8 @@ def setup_training(self) -> None:
     self.training_destroyed_crates_of_round = 0
     # Initialize the number of bombs dropped per round/game during training
     self.training_dropped_bombs_of_round = 0
-    # # Initialize the number of loops broken per round/game during training
-    # self.training_broken_loops_of_round = 0
+    # Initialize the number of loops broken per round/game during training
+    self.training_broken_loops_of_round = 0
     # Initialize the start time of the training
     self.training_start_time = time.time()
     # Initialize whether the agent is tested during training on a set of rounds/games with a fixed seed 
@@ -391,7 +391,7 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
                 "training_reward_of_round": self.training_reward_of_round,
                 "training_destroyed_crates_of_round": self.training_destroyed_crates_of_round,
                 "training_dropped_bombs_of_round": self.training_dropped_bombs_of_round,
-                #"training_broken_loops_of_round": self.training_broken_loops_of_round,
+                "training_broken_loops_of_round": self.training_broken_loops_of_round,
                 "training_score_of_round": score, 
                 "training_steps_of_round": state["step"],
                 "training_round": self.training_rounds,
@@ -403,10 +403,10 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
             self.training_destroyed_crates_of_round = 0
             # Reset the number of dropped bombs in the round/game during training
             self.training_dropped_bombs_of_round = 0
-            # # Clear the loop buffer
-            # self.loop_buffer.clear()
-            # # Reset the number of broken loops in the round/game during training
-            # self.training_broken_loops_of_round = 0
+            # Clear the loop buffer
+            self.loop_buffer.clear()
+            # Reset the number of broken loops in the round/game during training
+            self.training_broken_loops_of_round = 0
             # Check if the maximum runtime is reached
             if "MAX_RUNTIME" in self.CONFIG and self.CONFIG["MAX_RUNTIME"] is not None and time.time() - self.training_start_time > self.CONFIG["MAX_RUNTIME"]:
                 print("Maximum runtime reached.")

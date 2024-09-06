@@ -3,12 +3,22 @@ import yaml
 import torch
 import random
 import numpy as np
-#from collections import deque # ONLY FOR TRAINING
+import copy # ONLY FOR TRAINING
+from collections import deque # ONLY FOR TRAINING
 import wandb # ONLY FOR TRAINING
 from datetime import datetime # ONLY FOR TRAINING
 import settings as s
 from typing import Union
-from .utils import action_index_to_str, crop_channel, get_bomb_blast_coords, load_network, action_str_to_index
+from .utils import (
+    action_index_to_str, 
+    crop_channel, 
+    get_bomb_blast_coords, 
+    load_network, 
+    action_str_to_index,
+    num_crates_in_blast_coords,
+    distance_to_nearest_coin,
+    distance_to_nearest_crate
+)
 from .model.network import Network
 #from .model.coin_collector_agent import coin_collector_act
 
@@ -47,8 +57,8 @@ def setup(self) -> None:
         # Make sure the same configuration is used for the agent and the wandb run
         self.CONFIG = self.run.config
 
-        # # Initialize the loop buffer to detect and break loops
-        # self.loop_buffer = deque(maxlen=self.CONFIG["LOOP_BUFFER_CAPACITY"])
+        # Initialize the loop buffer to detect and break loops
+        self.loop_buffer = deque(maxlen=self.CONFIG["LOOP_BUFFER_CAPACITY"])
         # # Initialize the action that is part of a loop and thus must be prioritized (to fix the loop)
         # self.prioritized_action = None
         # # Initialize whether the reversed/previous action is part of a loop and thus must also be prioritized
@@ -115,39 +125,88 @@ def act(self, game_state: dict) -> str:
         # NB: The .item() method returns the value of the tensor as a standard Python number
         action = action_index_to_str(torch.argmax(action_q_values, dim=1).item())
 
-    # # NB: If the agent is not trained or if the agent is tested during training, loops are not broken
-    # if self.train and not self.test_training:   
-    #     # Hash the features so that we can compare it better with recent states/features
-    #     features_hash = hash(features.tobytes())
-    #     # Count the number of repeating state-action pairs
-    #     repetitions = 0
-    #     repetition_indices = []
-    #     # Loop over the recent state-action pairs
-    #     for index, recent_state_action in enumerate(self.loop_buffer):
-    #         # Check for a repetition
-    #         if recent_state_action[0] == action and recent_state_action[1] == features_hash and np.array_equal(recent_state_action[2], features):
-    #             repetitions += 1
-    #             repetition_indices.append(index)
-    #         # If we have found at least 2 repetitions (so 3 equal state-action pairs in total), then break the loop
-    #         if repetitions >= 2:
-    #             # Ask the coin collector agent for the next action
-    #             new_action = coin_collector_act(self, game_state)
-    #             # Check if the coin collector chose a different action
-    #             if new_action is not action:
-    #                 # If so, prioritize the action chosen from the DQN (to learn from)
-    #                 self.prioritized_action = action
-    #                 # Check if the repetition is a 2-loop with a moving action, i.e. LEFT & RIGHT or UP & DOWN
-    #                 # NB: We also check if there is no bomb dropped
-    #                 if repetition_indices[1] == repetition_indices[0] + 2 and self.CONFIG["LOOP_BUFFER_CAPACITY"] == repetition_indices[1] + 2 and action_str_to_index(action) < 4 and game_state["self"][2]:
-    #                     # If so, also priortize the reversed/previous action
-    #                     self.prioritize_prev_action = True
-    #                 # Increment the number of broken loops in the round/game during training
-    #                 self.training_broken_loops_of_round += 1
-    #                 # Overwrite the action
-    #                 action = new_action
-    #             break
-    #     # Append the current state-action pair to the loop buffer
-    #     self.loop_buffer.append((action, features_hash, features))
+    # NB: If the agent is not trained or if the agent is tested during training, loops are not broken
+    if self.train and not self.test_training:   
+        # Hash the features so that we can compare it better with recent states/features
+        features_hash = hash(features.tobytes())
+        # Count the number of repeating state-action pairs
+        repetitions = 0
+        repetition_indices = []
+        # Loop over the recent state-action pairs in the reversed order
+        for rev_index, recent_state_action in enumerate(reversed(self.loop_buffer)):
+            # Check for a repetition
+            if recent_state_action[0] == action and recent_state_action[1] == features_hash and np.array_equal(recent_state_action[2], features):
+                repetitions += 1
+                # Get the forward index
+                index = len(self.loop_buffer) - 1 - rev_index
+                repetition_indices.append(index)
+            # If we have found at least 2 repetitions (so 3 equal state-action pairs in total), then break the loop
+            # NB: We also check if there is no bomb dropped
+            if repetitions >= 2 and game_state["self"][2]:
+                # Store the old action
+                old_action = action
+                # Initialize the forbidden actions
+                forbidden_actions = [old_action, "WAIT"]
+                # Get the number of crates that would be attacked if the agent would place a bomb
+                num_crates_attacked = num_crates_in_blast_coords(np.array(game_state["self"][3]), game_state["field"])
+                # If BOMB would result in a useless bomb, forbid it
+                if num_crates_attacked == 0:
+                    forbidden_actions.append("BOMB")
+                # Get the current position of the agent
+                curr_pos = game_state["self"][3]
+                # Add invalid moves to the forbidden actions
+                if (game_state["field"][curr_pos[0]][curr_pos[1] - 1] != 0):
+                    forbidden_actions.append("UP")
+                if (game_state["field"][curr_pos[0]][curr_pos[1] + 1] != 0):
+                    forbidden_actions.append("DOWN")
+                if (game_state["field"][curr_pos[0] - 1][curr_pos[1]] != 0):
+                    forbidden_actions.append("LEFT")
+                if (game_state["field"][curr_pos[0] + 1][curr_pos[1]] != 0):
+                    forbidden_actions.append("RIGHT")
+                
+                # Check if the repetition is a 1-loop, i.e. WAIT or INVALID_ACTION
+                if repetition_indices[0] == repetition_indices[1] + 1 and len(self.loop_buffer) == repetition_indices[0] + 1:
+                    # Perform a random action but exclude the forbidden actions
+                    while action in forbidden_actions:
+                        action = action_index_to_str(random.randrange(self.CONFIG["ACTION_SIZE"]))
+                # Otherwise check if the repetition is a 2-loop with a moving action, i.e. LEFT & RIGHT or UP & DOWN
+                elif repetition_indices[0] == repetition_indices[1] + 2 and len(self.loop_buffer) == repetition_indices[0] + 2 and action_str_to_index(action) < 4:
+                    # Copy the next game state
+                    next_game_state = game_state.copy()
+                    # Compute the next position
+                    next_pos = [game_state["self"][3][0], game_state["self"][3][1]]
+                    if action == 'UP':
+                        next_pos[1] -= 1
+                    elif action == 'DOWN':
+                        next_pos[1] += 1
+                    elif action == 'LEFT':
+                        next_pos[0] -= 1
+                    elif action == 'RIGHT':
+                        next_pos[0] += 1
+                    # Update the next game state
+                    next_game_state["self"] = list(next_game_state["self"])
+                    next_game_state["self"][3] = tuple(next_pos)
+                    next_game_state["self"] = tuple(next_game_state["self"])
+                    # Check if there is at least one revealed coin
+                    if len(game_state["coins"]) > 0:
+                        # If so, check if the chosen action is bad, i.e. does not reduce the distance to the nearest coin
+                        if distance_to_nearest_coin(next_game_state) >= distance_to_nearest_coin(game_state):
+                             # Perform a random action but exclude the forbidden actions
+                            while action in forbidden_actions:
+                                action = action_index_to_str(random.randrange(self.CONFIG["ACTION_SIZE"]))
+                    else:
+                        # Otherwise, check if the chosen action is bad, i.e. does not reduce the distance to the nearest crate
+                        if distance_to_nearest_crate(next_game_state) >= distance_to_nearest_crate(game_state):
+                            # Perform a random action but exclude the forbidden actions
+                            while action in forbidden_actions:
+                                action = action_index_to_str(random.randrange(self.CONFIG["ACTION_SIZE"]))
+
+                # Increment the number of broken loops in the round/game during training
+                if action is not old_action:
+                    self.training_broken_loops_of_round += 1
+                break
+        # Append the current state-action pair to the loop buffer
+        self.loop_buffer.append((action, features_hash, features))
         
     #print("Action:", action)
     return action
