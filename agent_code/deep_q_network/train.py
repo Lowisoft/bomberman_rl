@@ -47,7 +47,8 @@ def setup_training(self) -> None:
         column_size=(s.COLS - 2), 
         row_size=(s.ROWS - 2), 
         action_size=self.CONFIG["ACTION_SIZE"],
-        hidden_layer_size=self.CONFIG["HIDDEN_LAYER_SIZE"]
+        hidden_layer_size=self.CONFIG["HIDDEN_LAYER_SIZE"],
+        use_dueling_dqn=self.CONFIG["USE_DUELING_DQN"]
         ).to(self.device)
     # Load the weights of the local Q-network to the target Q-network
     self.target_q_network.load_state_dict(self.local_q_network.state_dict())
@@ -241,7 +242,7 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         #      away (crate_pot(4) - crate_pot(1) = -0.09). Besides, in a 11 x 11 field, the max distance to a crate is 16 and crate_pot(16) = 0.195.
         #      Thus, the total possible range of USEFUL_BOMB is 0.06 [= 0.25 - 0.195 + 0.05] to 0.26 [= 0.25 - 0.09 + 0.1] depending on the number of crates attacked
         USEFUL_BOMB: 0.25 + 0.05 * (1 + (num_crates_attacked - 1) / 8) + (0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else 0.0),
-        # NB: ONLY IF USE_DANGER_POTENTIAL: Similar to USEFUL_BOMB, the agent receives a penalty of -0.1 for placing a bomb due to the potential but we do NOT compoensate this in USELESS_BOMB, since
+        # NB: ONLY IF USE_DANGER_POTENTIAL: Similar to USEFUL_BOMB, the agent receives a penalty of -0.1 for placing a bomb due to the potential but we do NOT compensate this in USELESS_BOMB, since
         #     it should remain a penalty (negative)
         # NB2: Contrary to USEFUL_BOMB, the crate potential function does not drop down (since no crate attacked) and thus it does NOT have to be compensated.
         USELESS_BOMB: -0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else -0.15,

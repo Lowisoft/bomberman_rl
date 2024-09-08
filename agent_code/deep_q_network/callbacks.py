@@ -75,7 +75,8 @@ def setup(self) -> None:
         column_size=(s.COLS - 2), 
         row_size=(s.ROWS - 2), 
         action_size=self.CONFIG["ACTION_SIZE"], 
-        hidden_layer_size=self.CONFIG["HIDDEN_LAYER_SIZE"]
+        hidden_layer_size=self.CONFIG["HIDDEN_LAYER_SIZE"],
+        use_dueling_dqn=self.CONFIG["USE_DUELING_DQN"]
         ).to(self.device)
 
     # Check if we can start from a saved state
