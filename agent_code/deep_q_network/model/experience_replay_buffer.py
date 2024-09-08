@@ -4,24 +4,50 @@ import torch
 from collections import deque
 import numpy as np
 import torchvision.transforms.functional as F
-from typing import Union, Tuple
+from typing import Union, Tuple, List
 from ..utils import action_str_to_index
 
 
 class ExperienceReplayBuffer(object):
-    def __init__(self, buffer_capacity: int, device: torch.device, discount_rate: float, transform_batch_randomly: bool = False, n_steps: int = 1) -> None:
+    def __init__(
+        self, 
+        capacity: int, 
+        device: torch.device, 
+        discount_rate: float, 
+        use_per: bool = False, 
+        transform_batch_randomly: bool = False, 
+        n_steps: int = 1,
+        priority_importance: float = 0.6) -> None:
         """ Initializes the experience replay buffer.
 
         Args:
-            buffer_capacity (int): The maximum number of experiences that can be stored in the buffer.
+            capacity (int): The maximum number of experiences that can be stored in the buffer.
             device (torch.device): The device to be used.
             discount_rate (float): The discount rate. Only used if n_steps is greater than 1, i.e. a larger temporal differencing should be used
+            use_per (bool, optional): Whether to use prioritized experience replay. Default is False.
             transform_batch_randomly (bool, optional):  Whether the sampled batch should be transformed randomly. Default is False.
             n_steps (int, optional): The number of steps used when computing the temporal difference. Default is 1.
+            priority_importance (float, optional): The importance of a priority. Default is 0.6.
         """
 
-        # Initialize the buffer
-        self.buffer = deque(maxlen=buffer_capacity)
+        # Store whether prioritized experience replay should be used
+        self.use_per = use_per
+        # Set the buffer capacity
+        self.capacity = capacity
+        # Check if prioritized experience replay should be used
+        if self.use_per:
+            # If so, initialize the buffer as a list (since then it is easier to keep track of the priorities)
+            self.buffer = []
+            # Initialize the importance of a priority
+            self.priority_importance = priority_importance
+            # Initialize the position index (which is used to overwrite the oldest experience in the buffer)
+            self.pos = 0
+            # Initialize the priorities of the experiences in the buffer
+            # NB: We use a small value of 1.0 for the priorities to avoid potential issues at the beginning of the training
+            self.priorities = np.ones((self.capacity,), dtype=np.float32)
+        else:
+            # Otherwise, initialize the buffer as a deque (since it is more efficient for appending and popping elements)
+            self.buffer = deque(maxlen=self.capacity)
         # Set the device to be used
         self.device = device
         # Whether the sampled batch should be transformed randomly
@@ -64,7 +90,7 @@ class ExperienceReplayBuffer(object):
         """
         if self.n_steps <= 1:
             # Add the experience to the buffer
-            self.buffer.append((state, action_str_to_index(action), reward, next_state))
+            self.perform_push(state, action_str_to_index(action), reward, next_state)
         else:
             # Push the current experience to the temporary buffer
             self.temporary_buffer.append((state, action_str_to_index(action), reward, next_state))
@@ -96,28 +122,98 @@ class ExperienceReplayBuffer(object):
             discount *= self.discount_rate
  
         # Store the experience with the cumulative reward in the replay buffer
-        self.buffer.append((
+        self.perform_push(
             self.temporary_buffer[0][0], # State of the oldest experience in the temporary buffer
             self.temporary_buffer[0][1], # Action of the oldest experience in the temporary buffer
             cumulative_reward, # Cumulative reward over the entire temporary buffer 
             self.temporary_buffer[-1][3], # Next state of the youngest experience in the buffer
-        ))   
+        )  
 
 
-    def sample(self, batch_size: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def perform_push(self, state: np.ndarray, action: int, reward: float, next_state: Union[np.ndarray, None]) -> None:
+        """ Performs the actual pushing of the experience to the buffer.
+
+        Args:
+            state (np.ndarray): The current state of the environment.
+            action (int): The index of the action taken in the state.
+            reward (float): The reward received after taking the action.
+            next_state (Union[np.ndarray, None]): The next state of the environment. None if the round/game has ended.
+        """
+    
+        # Check if prioritized experience replay should be used
+        if self.use_per:
+            # If so, get the maximum priority in the buffer
+            max_prio = self.priorities.max() if len(self.buffer) > 0 else 1.0
+            # Check if the buffer not full yet 
+            if len(self.buffer) < self.capacity:
+                # If so, add the experience to the buffer
+                self.buffer.append((state, action, reward, next_state))
+            else:
+                # Otherwise, add the experience to the buffer by overwriting the oldest experience with the use of the pos index
+                self.buffer[self.pos] = (state, action, reward, next_state)
+            # Set the priority of the experience to the maximum priority
+            self.priorities[self.pos] = max_prio
+            # Update the pos index to the next position in the buffer using the modulo operator
+            self.pos = (self.pos + 1) % self.capacity
+        else:
+            # Otherwise simply add the experience to the buffer 
+            # NB: The deque will automatically remove the oldest experience if the buffer is full
+            self.buffer.append((state, action, reward, next_state))
+
+
+    def update_priorities(self, indices: List[int], priorities: np.ndarray) -> None:
+        """ Updates the priorities of the experiences in the buffer.
+
+        Args:
+            indices (List[int]): The indices of the experiences in the buffer.
+            priorities (np.ndarray): The new priorities of the experiences in the buffer.
+        """
+
+        # Update the priorities of the experiences in the buffer
+        for i, priority in zip(indices, priorities):
+            self.priorities[i] = priority
+
+    def sample(self, batch_size: int, weight_importance: Union[float, None]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Union[List[int], None], Union[torch.Tensor, None]]:
         """ Samples a batch of experiences from the buffer.
             The every experience in the batch is randomly horizontally/vertically flipped and radomly rotated.
 
         Args: 
             batch_size (int): The number of experiences to sample into the batch.
+            weight_importance (Union[float, None]): The importance of the weights. Only used if prioritized experience replay is used. Default is None.
 
-           
         Returns:
-            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: A list containing the states, actions, rewards, next states and dones.
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Union[List[int], None], Union[torch.Tensor, None]]: 
+                A list containing the states, actions, rewards, next states and dones.
+                If prioritized experience replay is used, the list also contains the sampled indices and their corresponding weights.
         """
-
-        # Sample a batch of experiences from the buffer
-        batch = random.sample(self.buffer, batch_size)
+        
+        # Initialize the batch
+        batch = None
+        # Initialize the indices (ONLY USED FOR PRIORITIZED EXPERIENCE REPLAY)
+        indices = None
+        # Initialize the weights (ONLY USED FOR PRIORITIZED EXPERIENCE REPLAY)
+        weights = None
+        # Check if prioritized experience replay should be used
+        if self.use_per:
+            # Get the priorities of the experiences in the buffer
+            priorities = self.priorities if len(self.buffer) == self.capacity else self.priorities[:len(self.buffer)]
+            # Compute the sampling probabilities of the experiences in the buffer by taking the priorities to the power of the importance 
+            probabilities = priorities ** self.priority_importance
+            # Normalize the probabilities
+            probabilities /= probabilities.sum()
+            # Sample a batch of indices of the experiences from the buffer using the probabilities
+            indices = np.random.choice(len(self.buffer), batch_size, p=probabilities)
+            # Get the experiences from the buffer using the sampled indices
+            batch = [self.buffer[i] for i in indices]
+            # Compute the weights to correct the bias introduced by the prioritized experience replay
+            weights = (len(self.buffer) * probabilities[indices]) ** (-weight_importance)
+            # Normalize the weights
+            weights /= weights.max()
+            # Convert the weights to a tensor
+            weights = torch.tensor(weights, dtype=torch.float).to(self.device)
+        else:
+            # Sample a batch of experiences uniformly from the buffer
+            batch = random.sample(self.buffer, batch_size)
         # Extract the components of the experiences into separate lists
         states, actions, rewards, next_states = map(list, zip(*batch))
         # Get the shape of the states (will used later to create the dummy zero state)
@@ -246,7 +342,7 @@ class ExperienceReplayBuffer(object):
             #                     assert next_states[i][j][x][y].item() == old_next_states[i][j][x][y].item()
             #                     assert actions[i].item() == old_actions[i].item()
 
-        return states, actions, rewards, next_states, dones
+        return states, actions, rewards, next_states, dones, indices, weights
 
 
     def save(self, path: str) -> None:

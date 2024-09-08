@@ -316,7 +316,7 @@ def round_ended_but_not_dead(self, game_state: dict) -> bool:
     return False
 
 
-def save_data(project_name: str, run, run_name: str, wandbAPI, metadata: dict, network, optimizer, test_best_avg_score: float, buffer, path: str) -> None:
+def save_data(project_name: str, run, run_name: str, wandbAPI, metadata: dict, network, optimizer, test_best_avg_score: float, buffer, path: str, use_per: bool = False) -> None:
     """ Save the data.
 
     Args:
@@ -330,6 +330,7 @@ def save_data(project_name: str, run, run_name: str, wandbAPI, metadata: dict, n
         buffer (ExperienceReplayBuffer): The experience replay buffer.
         test_best_avg_score (float): The best average score achieved during testing.
         path (str): The path to save the data.
+        use_per (bool, optional): Whether PER is used. Defaults to False.
     """
 
     # Create a dictionary to store the training_data
@@ -340,6 +341,10 @@ def save_data(project_name: str, run, run_name: str, wandbAPI, metadata: dict, n
         "training_steps": metadata["training_steps"],
         "training_rounds": metadata["training_rounds"]
     }
+
+    # Add the weight importance to the training_data if PER is used
+    if use_per:
+        training_data["weight_importance"] = metadata["weight_importance"]
 
     # Build the path
     # NB: The path is either "best/" or "last/" depending on whether the best average score was achieved during testing
@@ -410,17 +415,20 @@ def load_network(network, path: str, device: torch.device) -> None:
         network.load_state_dict(torch.load(f, map_location=device, weights_only=True))
 
 
-def load_training_data(optimizer, buffer, path: str, device: torch.device) -> Tuple[float, float, int, int]:
+def load_training_data(optimizer, buffer, path: str, device: torch.device, use_per: bool = False) -> Tuple[float, Union[float, None], float, int, int]:
     """ Load the training data and the buffer.
 
     Args:
         optimizer: The optimizer of the network.
         buffer (ExperienceReplayBuffer): The experience replay buffer.
         path (str): The path to the training data and the buffer.
-        device (torch.device): The device to load the data on
+        device (torch.device): The device to load the data on.
+        use_per (bool, optional): Whether PER is used. Defaults to False.
 
     Returns:
-        Tuple[float, float, int, int]: The exploration rate, the best average score achieved during testing, the number of training steps and the number of training rounds.
+        Tuple[float, Union[float, None], float, int, int]: 
+            The exploration rate, the weight importance (ONLY USED FOR PRIORITIZED EXPERIENCE REPLAY),
+            the best average score achieved during testing, the number of training steps and the number of training rounds.
     """
 
     # Define the paths
@@ -438,6 +446,7 @@ def load_training_data(optimizer, buffer, path: str, device: torch.device) -> Tu
     move_optimizer_to_device(optimizer, device)
 
     exploration_rate = training_data['exploration_rate']
+    weight_importance = training_data.get('weight_importance', None) if use_per else None
     test_best_avg_score = training_data['test_best_avg_score']
     training_steps = training_data['training_steps']
     training_rounds = training_data['training_rounds']
@@ -445,7 +454,7 @@ def load_training_data(optimizer, buffer, path: str, device: torch.device) -> Tu
     # Load the buffer
     #buffer.load(buffer_path)
     
-    return exploration_rate, test_best_avg_score, training_steps, training_rounds
+    return exploration_rate, weight_importance, test_best_avg_score, training_steps, training_rounds
 
 
 def move_optimizer_to_device(optimizer, device: torch.device) -> None:

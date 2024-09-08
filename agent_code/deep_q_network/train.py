@@ -54,18 +54,13 @@ def setup_training(self) -> None:
     self.target_q_network.load_state_dict(self.local_q_network.state_dict())
     # Initialize the experience replay memory
     self.buffer = ExperienceReplayBuffer(
-        buffer_capacity=self.CONFIG["BUFFER_CAPACITY"], 
+        capacity=self.CONFIG["BUFFER_CAPACITY"], 
         device=self.device,
         discount_rate=self.CONFIG["DISCOUNT_RATE"],
+        use_per=self.CONFIG["USE_PER"],
         transform_batch_randomly=self.CONFIG["TRANSFORM_BATCH_RANDOMLY"],
-        n_steps=self.CONFIG["TD_STEPS"])
-    # # Initialize the prioritized experience replay memory
-    # self.prioritized_buffer = ExperienceReplayBuffer(
-    #     buffer_capacity=self.CONFIG["PRIORITIZED_BUFFER_CAPACITY"], 
-    #     device=self.device,
-    #     discount_rate=self.CONFIG["DISCOUNT_RATE"],
-    #     transform_batch_randomly=self.CONFIG["TRANSFORM_BATCH_RANDOMLY"],
-    #     n_steps=self.CONFIG["TD_STEPS"])
+        n_steps=self.CONFIG["TD_STEPS"],
+        priority_importance=self.CONFIG["PER_PRIORITY_IMPORTANCE"])
     # Initalize the optimizer
     if self.CONFIG["OPTIMIZER"] == "Adam":
         self.optimizer = torch.optim.Adam(self.local_q_network.parameters(), lr=self.CONFIG["LEARNING_RATE"])
@@ -75,23 +70,23 @@ def setup_training(self) -> None:
         self.optimizer = torch.optim.RMSprop(self.local_q_network.parameters(), lr=self.CONFIG["LEARNING_RATE"])
     else:
         raise ValueError(f"Optimizer {self.CONFIG["OPTIMIZER"]} not supported")
-
-    # Initialize the loss function
-    self.loss_function = torch.nn.MSELoss()
     
     # Check if we can start from a saved state
     if "START_FROM" in self.CONFIG and self.CONFIG["START_FROM"] in ["best", "last"] and os.path.exists(f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/"):
         print(f"Loading {self.CONFIG["START_FROM"]} training data and buffer from saved state.")
-        self.exploration_rate, self.test_best_avg_score, self.training_steps, self.training_rounds = load_training_data(
+        self.exploration_rate, self.weight_importance, self.test_best_avg_score, self.training_steps, self.training_rounds = load_training_data(
             optimizer=self.optimizer, 
             buffer=self.buffer, 
             path=f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/", 
-            device=self.device)
+            device=self.device,
+            use_per=self.CONFIG["USE_PER"])
     # Otherwise, set up the model from scratch
     else:
         print("Setting up training data and buffer from scratch.")
         # Initialize the exploration rate
         self.exploration_rate = self.CONFIG["EXPLORATION_RATE_START"]
+        # Initialize the PER weight importance (ONLY USED FOR PRIORITIZED EXPERIENCE REPLAY)
+        self.weight_importance = self.CONFIG["PER_WEIGHT_IMPORTANCE_START"] if self.CONFIG["USE_PER"] else None
         # Initialize the number of steps performed in training (exluding testing)
         self.training_steps = 0
         # Initialize the number of rounds performed in training (exluding testing)
@@ -125,7 +120,7 @@ def setup_training(self) -> None:
     self.test_seed = self.CONFIG["TEST_SEED"]
 
     # Tell wandb to watch the model
-    wandb.watch(self.local_q_network, self.loss_function, log="all", log_freq=10)
+    wandb.watch(self.local_q_network, log="all", log_freq=10)
 
     # Store a reference to the W&B api
     self.wandbAPI = wandb.Api()
@@ -323,6 +318,7 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
                     "test_avg_score": test_avg_score,
                     "is_test_best_avg_score": is_test_best_avg_score,
                     "exploration_rate": self.exploration_rate,
+                    "weight_importance": self.weight_importance if self.CONFIG["USE_PER"] else None,
                     "training_steps": self.training_steps,
                     "training_rounds": self.training_rounds,
                     "config": self.CONFIG
@@ -339,31 +335,17 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
                     optimizer=self.optimizer, 
                     buffer=self.buffer, 
                     test_best_avg_score=self.test_best_avg_score,
-                    path=self.CONFIG["PATH"])
+                    path=self.CONFIG["PATH"],
+                    use_per=self.CONFIG["USE_PER"])
     # Otherwise the agent is in training mode
     else:
-        # # Check if we should prioritize an action of a loop
-        # if self.prioritized_action is not None:
-        #     # If so, add it to the prioritized buffer
-        #     self.prioritized_buffer.push(
-        #         state=state_to_features(state), 
-        #         action=self.prioritized_action, 
-        #         reward=get_reward(self, state=state, action=self.prioritized_action, next_state=next_state, events=events), 
-        #         next_state=state_to_features(next_state))
-        #     # Reset the priortized action
-        #     self.prioritized_action = None
-        #     # Check if the reversed/previous action should also be prioritized
-        #     if self.prioritize_prev_action:
-        #         # If so, add the last experience of the main buffer to the prioritized buffer
-        #         # NB: We must convert the action back to a string
-        #         last_elem = self.buffer.get_last_added_elem()
-        #         self.prioritized_buffer.push(last_elem[0], action_index_to_str(last_elem[1]), last_elem[2], last_elem[3])
-        #         # Reset whether the last action should be prioritized
-        #         self.prioritize_prev_action = False
         # Store the experience in the buffer
         self.buffer.push(state=state_to_features(state), action=action, reward=reward, next_state=state_to_features(next_state))
         # Update the exploration rate
         self.exploration_rate = update_exploration_rate(self, self.exploration_rate)
+        # Update the weights importance (ONLY USED FOR PRIORITIZED EXPERIENCE REPLAY)
+        if self.CONFIG["USE_PER"]:
+            self.weight_importance = update_weight_importance(self, self.weight_importance)
         # Increment the total number of steps performed in training
         self.training_steps += 1
         # Increment the reward of the round/game during training
@@ -398,6 +380,9 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
                 "training_round": self.training_rounds,
                 "exploration_rate": self.exploration_rate,
                 }, step=self.training_steps)
+            # Log the weights importance (ONLY USED FOR PRIORITIZED EXPERIENCE REPLAY)
+            if self.CONFIG["USE_PER"]:
+                wandb.log({ "weight_importance": self.weight_importance }, step=self.training_steps)
             # Reset the reward of the round/game during training
             self.training_reward_of_round = 0
             # Reset the number of destroyed crates in the round/game during training
@@ -445,22 +430,28 @@ def update_exploration_rate(self, exploration_rate: float) -> float:
     return max(self.CONFIG["EXPLORATION_RATE_MIN"], exploration_rate * self.CONFIG["EXPLORATION_RATE_DECAY"])
 
 
+def update_weight_importance(self, weight_importance: float) -> float:
+    """ Update the weight importance.
+
+    Args:
+        weight_importance (float): The current weight importance.
+
+    Returns:
+        float: The updated weight imporrtance.
+    """
+    
+    # Increment the weight importance if it is below the maximum weight importance
+    return min(self.CONFIG["PER_WEIGHT_IMPORTANCE_MAX"], weight_importance + self.CONFIG["PER_WEIGHT_IMPORTANCE_INCREMENT"])
+
+
 def train_network(self) -> None:
     """ Train the local Q-network. """
 
     # Set the local network to training mode
     self.local_q_network.train()
     for i in range(self.CONFIG["NUM_EPOCHS"]):
-        # # Append an epoch where the buffer is the prioritized buffer
-        # if i == self.CONFIG["NUM_EPOCHS"]:
-        #     # Do not use the prioritized buffer if it is not full yet or if the frequency is not met
-        #     if len(self.prioritized_buffer) < self.CONFIG["PRIORITIZED_BUFFER_MIN_SIZE"] or self.training_steps % self.CONFIG["PRIORITIZED_TRAINING_FREQUENCY"] != 0:
-        #         break
-        #     buffer = self.prioritized_buffer
-        # else: 
-        #     buffer = self.buffer
         # Sample a batch of experiences from the buffer
-        states, actions, rewards, next_states, dones = self.buffer.sample(batch_size=self.CONFIG["BATCH_SIZE"])
+        states, actions, rewards, next_states, dones, indices, weights = self.buffer.sample(batch_size=self.CONFIG["BATCH_SIZE"], weight_importance=self.weight_importance)
         # Get the Q-values of the taken actions for the states from the local Q-network
         # NB: Add a dummy dimension with unsqueeze(1) for the actions to obtain the shape (batch_size, 1)
         #     This is necessary because .gather requires the shape of the actions to match the shape of the output of the local Q-network
@@ -488,14 +479,30 @@ def train_network(self) -> None:
             next_q_values = self.target_q_network(next_states).detach().max(dim=1)[0]        
         # Calculate the target Q-values
         target_q_values = rewards + self.CONFIG["DISCOUNT_RATE"] * next_q_values * (1 - dones)
-        # Compute the MSE loss
-        loss = self.loss_function(q_values, target_q_values)
+        # Initialize the MSE loss
+        loss = None
+        # Initialize the updated priorities (ONLY USED FOR PRIORITIZED EXPERIENCE REPLAY)
+        priorities = None
+        # Check if the agent uses prioritized experience replay
+        if self.CONFIG["USE_PER"]:
+            # If so, multiply the loss by the weights before computing the mean
+            loss = (q_values - target_q_values).pow(2) * weights
+            # Compute the updated priorities (add a small value to the priorities to avoid zero priorities)
+            priorities = loss + 1e-5
+            # Compute the mean of the loss
+            loss = loss.mean()
+        else:
+            # Otherwise, simply compute the MSE loss
+            loss = (q_values - target_q_values).pow(2).mean()
         # Reset the gradients
         self.optimizer.zero_grad()
         # Peform the backpropagation
         loss.backward()
         # Log the loss
         wandb.log({"loss": loss.item()}, step=self.training_steps)
+        # Update the priorities in the buffer (ONLY USED FOR PRIORITIZED EXPERIENCE REPLAY)
+        if self.CONFIG["USE_PER"]:
+            self.buffer.update_priorities(indices=indices, priorities=priorities.detach().cpu().numpy())
         # Update the weights
         self.optimizer.step()
     # Set the local network back to evaluation mode
