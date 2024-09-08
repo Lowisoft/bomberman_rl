@@ -57,12 +57,10 @@ def setup(self) -> None:
         # Make sure the same configuration is used for the agent and the wandb run
         self.CONFIG = self.run.config
 
-        # Initialize the loop buffer to detect and break loops
-        self.loop_buffer = deque(maxlen=self.CONFIG["LOOP_BUFFER_CAPACITY"])
-        # # Initialize the action that is part of a loop and thus must be prioritized (to fix the loop)
-        # self.prioritized_action = None
-        # # Initialize whether the reversed/previous action is part of a loop and thus must also be prioritized
-        # self.prioritize_prev_action = False
+        # Check if we should break loops
+        if self.CONFIG["BREAK_LOOPS"]:
+            # If so, initialize the loop buffer to detect and break loops
+            self.loop_buffer = deque(maxlen=self.CONFIG["LOOP_BUFFER_CAPACITY"])
 
     # Set the device to be used
     self.use_cuda = torch.cuda.is_available()
@@ -126,8 +124,9 @@ def act(self, game_state: dict) -> str:
         # NB: The .item() method returns the value of the tensor as a standard Python number
         action = action_index_to_str(torch.argmax(action_q_values, dim=1).item())
 
+    # Break loops (if enabled) by avoiding repeating state-action pairs
     # NB: If the agent is not trained or if the agent is tested during training, loops are not broken
-    if self.train and not self.test_training:   
+    if self.CONFIG["BREAK_LOOPS"] and self.train and not self.test_training:   
         # Hash the features so that we can compare it better with recent states/features
         features_hash = hash(features.tobytes())
         # Count the number of repeating state-action pairs

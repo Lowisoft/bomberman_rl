@@ -101,7 +101,8 @@ def setup_training(self) -> None:
     # Initialize the number of bombs dropped per round/game during training
     self.training_dropped_bombs_of_round = 0
     # Initialize the number of loops broken per round/game during training
-    self.training_broken_loops_of_round = 0
+    if self.CONFIG["BREAK_LOOPS"]:
+        self.training_broken_loops_of_round = 0
     # Initialize the start time of the training
     self.training_start_time = time.time()
     # Initialize whether the agent is tested during training on a set of rounds/games with a fixed seed 
@@ -374,7 +375,6 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
                 "training_reward_of_round": self.training_reward_of_round,
                 "training_destroyed_crates_of_round": self.training_destroyed_crates_of_round,
                 "training_dropped_bombs_of_round": self.training_dropped_bombs_of_round,
-                "training_broken_loops_of_round": self.training_broken_loops_of_round,
                 "training_score_of_round": score, 
                 "training_steps_of_round": state["step"],
                 "training_round": self.training_rounds,
@@ -383,16 +383,19 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
             # Log the weights importance (ONLY USED FOR PRIORITIZED EXPERIENCE REPLAY)
             if self.CONFIG["USE_PER"]:
                 wandb.log({ "weight_importance": self.weight_importance }, step=self.training_steps)
+            # Log the number of broken loops (if enabled)
+            if self.CONFIG["BREAK_LOOPS"]:
+                wandb.log({ "training_broken_loops_of_round": self.training_broken_loops_of_round }, step=self.training_steps)
             # Reset the reward of the round/game during training
             self.training_reward_of_round = 0
             # Reset the number of destroyed crates in the round/game during training
             self.training_destroyed_crates_of_round = 0
             # Reset the number of dropped bombs in the round/game during training
             self.training_dropped_bombs_of_round = 0
-            # Clear the loop buffer
-            self.loop_buffer.clear()
-            # Reset the number of broken loops in the round/game during training
-            self.training_broken_loops_of_round = 0
+            # Clear the loop buffer and reset the number of broken loops in the round/game during training
+            if self.CONFIG["BREAK_LOOPS"]:
+                self.loop_buffer.clear()
+                self.training_broken_loops_of_round = 0
             # Check if the maximum runtime is reached
             if "MAX_RUNTIME" in self.CONFIG and self.CONFIG["MAX_RUNTIME"] is not None and time.time() - self.training_start_time > self.CONFIG["MAX_RUNTIME"]:
                 print("Maximum runtime reached.")
