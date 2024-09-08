@@ -191,13 +191,17 @@ def act(self, game_state: dict) -> str:
                     # Check if there is at least one revealed coin
                     if len(game_state["coins"]) > 0:
                         # If so, check if the chosen action is bad, i.e. does not reduce the distance to the nearest coin
-                        if distance_to_nearest_coin(next_game_state) >= distance_to_nearest_coin(game_state):
+                        next_distance = distance_to_nearest_coin(next_game_state)
+                        curr_distance = distance_to_nearest_coin(game_state)
+                        if next_distance is not None and curr_distance is not None and next_distance >= curr_distance:
                              # Perform a random action but exclude the forbidden actions
                             while action in forbidden_actions:
                                 action = action_index_to_str(random.randrange(self.CONFIG["ACTION_SIZE"]))
                     else:
                         # Otherwise, check if the chosen action is bad, i.e. does not reduce the distance to the nearest crate
-                        if distance_to_nearest_crate(next_game_state) >= distance_to_nearest_crate(game_state):
+                        next_distance = distance_to_nearest_crate(next_game_state)
+                        curr_distance = distance_to_nearest_crate(game_state)
+                        if next_distance is not None and curr_distance is not None and next_distance >= curr_distance:
                             # Perform a random action but exclude the forbidden actions
                             while action in forbidden_actions:
                                 action = action_index_to_str(random.randrange(self.CONFIG["ACTION_SIZE"]))
