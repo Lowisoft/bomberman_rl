@@ -230,6 +230,9 @@ def get_reward(self, state: dict, add_state: np.ndarray, action: str, next_state
     if agent_has_trapped_itself(state, action, next_state, events):
         events.append(TRAPPED_ITSELF)
 
+     # Extract the number of remaining coins from the additional state information
+    num_of_remaining_coins = add_state[0] if add_state is not None else 0
+
     # Define the rewards for the events
     game_rewards = {
         e.COIN_COLLECTED: 1,
@@ -242,14 +245,14 @@ def get_reward(self, state: dict, add_state: np.ndarray, action: str, next_state
         #      not in a blast coordinate and for which the last tile of the path is also not in a blast coordinate is at least 4 steps
         #      away (crate_pot(4) - crate_pot(1) = -0.09). Besides, in a 11 x 11 field, the max distance to a crate is 16 and crate_pot(16) = 0.195.
         #      Thus, the total possible range of USEFUL_BOMB is 0.115 [= 0.25 + 0.05 - 0.195 + 0.01 + 0] to 0.41 [= 0.25 + 0.05 - 0.09 + 0.1 + 0.1] depending on the number of crates and opponents attacked
-        USEFUL_BOMB: 0.25 + 0.05 + 0.1 * (num_crates_attacked / 10) + 0.1 * (num_opponents_attacked / 3) + (0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else 0.0),
+        USEFUL_BOMB: 0.25 + 0.05 + 0.1 * (num_crates_attacked / 10) + 0.1 * (num_opponents_attacked / self.CONFIG["NUM_OPPONENTS"]) + (0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else 0.0),
         # NB: ONLY IF USE_DANGER_POTENTIAL: Similar to USEFUL_BOMB, the agent receives a penalty of -0.1 for placing a bomb due to the potential but we do NOT compensate this in USELESS_BOMB, since
         #     it should remain a penalty (negative)
         # NB2: Contrary to USEFUL_BOMB, the crate potential function does not drop down (since no crate attacked) and thus it does NOT have to be compensated.
         USELESS_BOMB: -0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else -0.15,
         TRAPPED_ITSELF: -0.5,
-        # Penalize the agent for dying by the number of coins left (normalized)
-        e.GOT_KILLED: -(s.SCENARIOS["classic"]["COIN_COUNT"] - state["self"][1])/s.SCENARIOS["classic"]["COIN_COUNT"] 
+        # Penalize the agent for dying by the number of coins and opponents left (normalized)
+        e.GOT_KILLED: -(s.REWARD_COIN * num_of_remaining_coins + s.REWARD_KILL * len(state["others"]))/(s.REWARD_COIN * s.SCENARIOS["classic"]["COIN_COUNT"] + s.REWARD_KILL * self.CONFIG["NUM_OPPONENTS"]),
     }
 
     # Compute the reward based on the events
@@ -290,9 +293,8 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
     # The round/game has ended if the next state is None
     is_end_of_round = (next_state == None)    
 
-
     # Set the additional state (which is the number of remaining coins and the number of remaining opponents)
-    add_state = np.array([self.num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(state["others"]) / 3])
+    add_state = np.array([self.num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(state["others"]) / self.CONFIG["NUM_OPPONENTS"]])
     # Initialize the next number of remaining coins
     next_num_of_remaining_coins = self.num_of_remaining_coins if next_state is not None else 0
     # Initialize the number of collected coins
@@ -307,7 +309,7 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
     # Update the number of remaining coins
     next_num_of_remaining_coins -= collected_coins
     # Set the additional next state (which is the next number of remaining coins and the next number of remaining opponents)
-    add_next_state = np.array([next_num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(next_state["others"]) / 3]) if next_state is not None else None
+    add_next_state = np.array([next_num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(next_state["others"]) / self.CONFIG["NUM_OPPONENTS"]]) if next_state is not None else None
 
     # Comput the reward
     reward = get_reward(self, state=state, add_state=add_state, action=action, next_state=next_state, add_next_state=add_next_state, events=events)

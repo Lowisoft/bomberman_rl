@@ -89,12 +89,17 @@ class Network(nn.Module):
             torch.Tensor: The Q-values of the actions for the input state.
         """
 
+        # Forward pass through the convolutional layers
         flattened_conv = self.conv_layers(state)
+        # Concatenate the flattened convolutional layers with the additional state
         combined_input = torch.cat((flattened_conv, add_state), dim=1)
 
+        # Check if the dueling DQN architecture is used
         if not self.use_dueling_dqn:
+            # If not, return the output of the layers
             return self.layers(combined_input)
         else:
+            # Otherwise, return the output of the advantage and value layers (combined)
             advantage = self.advantage_layers(combined_input)
             value = self.value_layers(combined_input)
             return value + advantage - advantage.mean()
@@ -103,10 +108,16 @@ class Network(nn.Module):
     def initialize_weights_kaiming(self) -> None:
         """ Initialize the weights of the network using the Kaiming initialization. """
         
+        # Define the initialization function
         def init_weights(m):
+            # Check if the module is a convolutional or linear layer
             if isinstance(m, (nn.Conv2d, nn.Linear)):
+                # If so use the Kaiming initialization
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                # Check if the module has a bias
                 if m.bias is not None:
+                    # If so, initialize the bias to zero
                     nn.init.constant_(m.bias, 0)
 
+        # Apply the initialization function to the network
         self.apply(init_weights)

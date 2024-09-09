@@ -132,7 +132,7 @@ def act(self, game_state: dict) -> str:
     # Get the features from the state
     features = state_to_features(game_state)
     # Get the additional features from the state
-    add_features = np.array([self.num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(game_state["others"]) / 3])
+    add_features = np.array([self.num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(game_state["others"]) / self.CONFIG["NUM_OPPONENTS"]])
 
     # Select the action using an epsilon-greedy policy
     # NB: If the agent is not trained or if the agent is tested during training, the exploration is disabled
