@@ -151,19 +151,22 @@ def get_bomb_blast_coords(x: int, y: int, field: np.ndarray, power: int = s.BOMB
     return blast_coords
 
 
-def num_crates_in_blast_coords(pos: np.ndarray, field: np.ndarray) -> bool:
-    """ Return the number of crates that are in the blast coords of the given bomb position.
+def num_crates_and_opponents_in_blast_coords(pos: np.ndarray, field: np.ndarray, others: List) -> Tuple[int, int]:
+    """ Return the number of crates and the number of oppponents that are in the blast coords of the given bomb position.
 
     Args:
         pos (np.npdarray): The postion of the bomb.
         field (np.ndarray): The current field of the game.
+        others (List): The current list of opponents.
 
     Returns:
-        bool: The number of crates that are in the blast coords of the given bomb position.
+        Tuple[int, int]: The number of crates and the number of opponents that are in the blast coords of the given bomb position.
     """
 
     # Initialize the number of crates
     num_crates = 0
+    # Initialize the number of opponents
+    num_opponents = 0
     # Get the blast coordinates of the bomb
     blast_coords = get_bomb_blast_coords(pos[0], pos[1], field, s.BOMB_POWER)
     for coord in blast_coords:
@@ -171,8 +174,10 @@ def num_crates_in_blast_coords(pos: np.ndarray, field: np.ndarray) -> bool:
         if field[coord] == 1:
             # If so, increase the number of crates
             num_crates += 1
+    # Get the number of opponents in the blast coordinates
+    num_opponents = sum(1 for other in others if other[3] in blast_coords)
 
-    return num_crates
+    return num_crates, num_opponents
 
 
 def is_bomb_at_pos(pos: np.ndarray, bombs: List) -> bool:

@@ -15,7 +15,7 @@ from .utils import (
     get_bomb_blast_coords, 
     load_network, 
     action_str_to_index,
-    num_crates_in_blast_coords,
+    num_crates_and_opponents_in_blast_coords,
     distance_to_best_coin,
     distance_to_nearest_crate
 )
@@ -148,9 +148,9 @@ def act(self, game_state: dict) -> str:
                 # Initialize the forbidden actions
                 forbidden_actions = [old_action, "WAIT"]
                 # Get the number of crates that would be attacked if the agent would place a bomb
-                num_crates_attacked = num_crates_in_blast_coords(np.array(game_state["self"][3]), game_state["field"])
+                num_crates_attacked, num_opponents_attacked = num_crates_and_opponents_in_blast_coords(np.array(game_state["self"][3]), game_state["field"], game_state["others"], s.BOMB_POWER)
                 # If BOMB would result in a useless bomb, forbid it
-                if num_crates_attacked == 0:
+                if num_crates_attacked == 0 and num_opponents_attacked == 0:
                     forbidden_actions.append("BOMB")
                 # Get the current position of the agent
                 curr_pos = game_state["self"][3]
@@ -213,7 +213,7 @@ def act(self, game_state: dict) -> str:
         self.loop_buffer.append((action, features_hash, features))
         
     #print("Action:", action)
-    return action
+    return game_state['user_input']
 
 
 def state_to_features(game_state: Union[dict, None]) -> np.array:
