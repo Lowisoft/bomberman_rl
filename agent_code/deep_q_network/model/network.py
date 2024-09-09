@@ -4,7 +4,7 @@ import numpy as np
 
 
 class Network(nn.Module):
-    def __init__(self, channel_size: int, column_size: int, row_size: int, action_size: int, hidden_layer_size: int, use_dueling_dqn: bool = False) -> None:
+    def __init__(self, channel_size: int, column_size: int, row_size: int, action_size: int, hidden_layer_size: int, add_state_size: int, use_dueling_dqn: bool = False) -> None:
         """ Initializes the deep Q-network.
 
         Args:
@@ -27,6 +27,9 @@ class Network(nn.Module):
         # Calculate the size of the flattened feature map after the convolutional layers
         self.feature_size = 16 * (column_size - 2) * (row_size - 2)
 
+        # Calculate the size of the input to the fully connected layer
+        self.input_size = self.feature_size + add_state_size
+
         # Define the convolutional layers
         self.conv_layers = nn.Sequential(
               # Input: (batch_size, channel_size, column_size, row_size)
@@ -45,9 +48,9 @@ class Network(nn.Module):
         if self.use_dueling_dqn:
             # Define the advantage layers
             self.advantage_layers = nn.Sequential(
-                # Input: (batch_size, self.feature_size)
+                # Input: (batch_size, self.input_size)
                 # Output: (batch_size, hidden_layer_size)
-                nn.Linear(self.feature_size, hidden_layer_size),
+                nn.Linear(self.input_size, hidden_layer_size),
                 nn.ReLU(),
                 # Input: (batch_size, hidden_layer_size)
                 # Output: (batch_size, action_size)
@@ -55,9 +58,9 @@ class Network(nn.Module):
             )
             # Define the value layers
             self.value_layers = nn.Sequential(
-                # Input: (batch_size, self.feature_size)
+                # Input: (batch_size, self.input_size)
                 # Output: (batch_size, hidden_layer_size)
-                nn.Linear(self.feature_size, hidden_layer_size),
+                nn.Linear(self.input_size, hidden_layer_size),
                 nn.ReLU(),
                 # Input: (batch_size, hidden_layer_size)
                 # Output: (batch_size, 1)
@@ -65,9 +68,9 @@ class Network(nn.Module):
             )
         else:
             self.layers = nn.Sequential(
-                # Input: (batch_size, self.feature_size)
+                # Input: (batch_size, self.input_size)
                 # Output: (batch_size, hidden_layer_size)
-                nn.Linear(self.feature_size, hidden_layer_size),
+                nn.Linear(self.input_size, hidden_layer_size),
                 nn.ReLU(),
                 # Input: (batch_size, hidden_layer_size)
                 # Output: (batch_size, action_size)
@@ -75,23 +78,25 @@ class Network(nn.Module):
             )
 
 
-    def forward(self, state: torch.Tensor) -> torch.Tensor:
+    def forward(self, state: torch.Tensor, add_state: torch.Tensor) -> torch.Tensor:
         """ Forward pass of the deep Q-network.
 
         Args:
             state (torch.Tensor): The input state to the Q-network.
+            add_state (torch.Tensor): The additional input state to the Q-network.
 
         Returns:
             torch.Tensor: The Q-values of the actions for the input state.
         """
 
         flattened_conv = self.conv_layers(state)
+        combined_input = torch.cat((flattened_conv, add_state), dim=1)
 
         if not self.use_dueling_dqn:
-            return self.layers(flattened_conv)
+            return self.layers(combined_input)
         else:
-            advantage = self.advantage_layers(flattened_conv)
-            value = self.value_layers(flattened_conv)
+            advantage = self.advantage_layers(combined_input)
+            value = self.value_layers(combined_input)
             return value + advantage - advantage.mean()
 
     

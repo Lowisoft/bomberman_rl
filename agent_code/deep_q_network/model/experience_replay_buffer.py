@@ -79,21 +79,23 @@ class ExperienceReplayBuffer(object):
     #     return self.buffer[-1] 
         
 
-    def push(self, state: np.ndarray, action: str, reward: float, next_state: Union[np.ndarray, None]) -> None:
+    def push(self, state: np.ndarray, add_state: np.ndarray, action: str, reward: float, next_state: Union[np.ndarray, None], add_next_state: Union[np.ndarray, None]) -> None:
         """ Pushes a new experience to the buffer.
 
         Args:
             state (np.ndarray): The current state of the environment.
+            add_state (np.ndarray): The additional state of the environment.
             action (str): The action taken in the state.
             reward (float): The reward received after taking the action.
             next_state (Union[np.ndarray, None]): The next state of the environment. None if the round/game has ended.
+            add_next_state (Union[np.ndarray, None]): The next additional state of the environment. None if the round/game has ended.
         """
         if self.n_steps <= 1:
             # Add the experience to the buffer
-            self.perform_push(state, action_str_to_index(action), reward, next_state)
+            self.perform_push(state, add_state, action_str_to_index(action), reward, next_state, add_next_state)
         else:
             # Push the current experience to the temporary buffer
-            self.temporary_buffer.append((state, action_str_to_index(action), reward, next_state))
+            self.temporary_buffer.append((state, add_state, action_str_to_index(action), reward, next_state, add_next_state))
             # Check if the round/game finished
             if next_state is None: 
                 # If so, clear the temporary buffer by adding the remaining experiences in the temporary buffer
@@ -124,20 +126,24 @@ class ExperienceReplayBuffer(object):
         # Store the experience with the cumulative reward in the replay buffer
         self.perform_push(
             self.temporary_buffer[0][0], # State of the oldest experience in the temporary buffer
-            self.temporary_buffer[0][1], # Action of the oldest experience in the temporary buffer
+            self.temporary_buffer[0][1], # Additional state of the oldest experience in the temporary buffer
+            self.temporary_buffer[0][2], # Action of the oldest experience in the temporary buffer
             cumulative_reward, # Cumulative reward over the entire temporary buffer 
-            self.temporary_buffer[-1][3], # Next state of the youngest experience in the buffer
+            self.temporary_buffer[-1][4], # Next state of the youngest experience in the buffer
+            self.temporary_buffer[-1][5] # Additional state of the youngest experience in the buffer
         )  
 
 
-    def perform_push(self, state: np.ndarray, action: int, reward: float, next_state: Union[np.ndarray, None]) -> None:
+    def perform_push(self, state: np.ndarray, add_state: np.ndarray, action: int, reward: float, next_state: Union[np.ndarray, None], add_next_state: Union[np.ndarray, None]) -> None:
         """ Performs the actual pushing of the experience to the buffer.
 
         Args:
             state (np.ndarray): The current state of the environment.
+            add_state (np.ndarray): The additional state of the environment.
             action (int): The index of the action taken in the state.
             reward (float): The reward received after taking the action.
             next_state (Union[np.ndarray, None]): The next state of the environment. None if the round/game has ended.
+            add_next_state (Union[np.ndarray, None]): The next additional state of the environment. None if the round/game has ended.
         """
     
         # Check if prioritized experience replay should be used
@@ -147,10 +153,10 @@ class ExperienceReplayBuffer(object):
             # Check if the buffer not full yet 
             if len(self.buffer) < self.capacity:
                 # If so, add the experience to the buffer
-                self.buffer.append((state, action, reward, next_state))
+                self.buffer.append((state, add_state, action, reward, next_state, add_next_state))
             else:
                 # Otherwise, add the experience to the buffer by overwriting the oldest experience with the use of the pos index
-                self.buffer[self.pos] = (state, action, reward, next_state)
+                self.buffer[self.pos] = (state, add_state, action, reward, next_state, add_next_state)
             # Set the priority of the experience to the maximum priority
             self.priorities[self.pos] = max_prio
             # Update the pos index to the next position in the buffer using the modulo operator
@@ -158,7 +164,7 @@ class ExperienceReplayBuffer(object):
         else:
             # Otherwise simply add the experience to the buffer 
             # NB: The deque will automatically remove the oldest experience if the buffer is full
-            self.buffer.append((state, action, reward, next_state))
+            self.buffer.append((state, add_state, action, reward, next_state, add_next_state))
 
 
     def update_priorities(self, indices: List[int], priorities: np.ndarray) -> None:
@@ -182,8 +188,8 @@ class ExperienceReplayBuffer(object):
             weight_importance (Union[float, None]): The importance of the weights. Only used if prioritized experience replay is used. Default is None.
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Union[List[int], None], Union[torch.Tensor, None]]: 
-                A list containing the states, actions, rewards, next states and dones.
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Union[List[int], None], Union[torch.Tensor, None]]: 
+                A list containing the states, additional states, actions, rewards, next states, additional next states and dones.
                 If prioritized experience replay is used, the list also contains the sampled indices and their corresponding weights.
         """
         
@@ -215,11 +221,15 @@ class ExperienceReplayBuffer(object):
             # Sample a batch of experiences uniformly from the buffer
             batch = random.sample(self.buffer, batch_size)
         # Extract the components of the experiences into separate lists
-        states, actions, rewards, next_states = map(list, zip(*batch))
+        states, add_states, actions, rewards, next_states, add_next_states = map(list, zip(*batch))
         # Get the shape of the states (will used later to create the dummy zero state)
         state_shape = states[0].shape
+        # Get the shape of the additional states (will used later to create the dummy zero state)
+        add_state_shape = add_states[0].shape
         # Stack the states to obtain the shape (batch_size, channel_size, column_size, row_size) and convert to tensor
         states = torch.from_numpy(np.stack(states, axis=0)).float().to(self.device)
+        # Stack the additional states to obtain the shape (batch_size, channel_size, column_size, row_size) and convert to tensor
+        add_states = torch.from_numpy(np.stack(add_states, axis=0)).float().to(self.device)
         # Convert the actions to a tensor
         # NB: The long data type is used because the actions are used as indices (which need to be long in PyTorch)
         actions = torch.tensor(actions, dtype=torch.long).to(self.device)
@@ -232,8 +242,15 @@ class ExperienceReplayBuffer(object):
             np.zeros(state_shape) if done else next_state
             for next_state, done in zip(next_states, dones)
         ])
+        # Search for additional next states that are None and convert them to a dummy zero state
+        add_next_states = np.array([
+            np.zeros(add_state_shape) if done else add_next_state
+            for add_next_state, done in zip(add_next_states, dones)
+        ])
         # Stack the next states to obtain the shape (batch_size, channel_size, column_size, row_size) and convert to tensor
         next_states = torch.from_numpy(np.stack(next_states, axis=0)).float().to(self.device)
+        # Stack the add next states to obtain the shape (batch_size, channel_size, column_size, row_size) and convert to tensor
+        add_next_states = torch.from_numpy(np.stack(add_next_states, axis=0)).float().to(self.device)
         # Convert the dones mask to a tensor
         # NB: The float data type is used because the dones mask is used in a calculation with rewards (which are float)
         dones = torch.from_numpy(dones).float().to(self.device)
@@ -342,7 +359,7 @@ class ExperienceReplayBuffer(object):
             #                     assert next_states[i][j][x][y].item() == old_next_states[i][j][x][y].item()
             #                     assert actions[i].item() == old_actions[i].item()
 
-        return states, actions, rewards, next_states, dones, indices, weights
+        return states, add_states, actions, rewards, next_states, add_next_states, dones, indices, weights
 
 
     def save(self, path: str) -> None:

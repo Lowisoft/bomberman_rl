@@ -49,6 +49,7 @@ def setup_training(self) -> None:
         row_size=(s.ROWS - 2), 
         action_size=self.CONFIG["ACTION_SIZE"],
         hidden_layer_size=self.CONFIG["HIDDEN_LAYER_SIZE"],
+        add_state_size=self.CONFIG["ADD_STATE_SIZE"],
         use_dueling_dqn=self.CONFIG["USE_DUELING_DQN"]
         ).to(self.device)
     # Load the weights of the local Q-network to the target Q-network
@@ -156,7 +157,6 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
         handle_step(self, 
             state=old_game_state,
             action=self_action, 
-            reward=get_reward(self, state=old_game_state, action=self_action, next_state=new_game_state, events=events),
             next_state=new_game_state,
             events=events,
             score=new_game_state["self"][1],
@@ -183,20 +183,21 @@ def end_of_round(self, last_game_state: dict, last_action: str, events: List[str
     handle_step(self, 
     state=last_game_state,
     action=last_action,
-    reward=get_reward(self, state=last_game_state, action=last_action, next_state=None, events=events),
     next_state=None,
     events=events,
     score=last_game_state["self"][1],
     change_world_seed=last_game_state["change_world_seed"])
 
 
-def get_reward(self, state: dict, action: str, next_state: Union[dict, None], events: List[str]) -> int:
+def get_reward(self, state: dict, add_state: np.ndarray, action: str, next_state: Union[dict, None], add_next_state: Union[np.ndarray, None], events: List[str]) -> int:
     """ Compute the reward based on the changed states and the events that occurred.
 
     Args:
         state (dict): The state before the action was taken.
+        add_state (np.ndarray): The additional state before the action was taken.
         action (str): The action taken in the state.
         next_state (Union[dict, None]): The state after the action was taken. None if the round/game has ended.
+        add_next_state (Union[np.ndarray, None]): The additional next state after the action was taken. None if the round/game has ended.
         events (List[str]): The events that occurred when going from the state to the next state.
 
     Returns:
@@ -248,7 +249,7 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         USELESS_BOMB: -0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else -0.15,
         TRAPPED_ITSELF: -0.5,
         # Penalize the agent for dying by the number of coins left (normalized)
-        e.GOT_KILLED: -(s.SCENARIOS["loot-crate"]["COIN_COUNT"] - state["self"][1])/s.SCENARIOS["loot-crate"]["COIN_COUNT"] 
+        e.GOT_KILLED: -(s.SCENARIOS["classic"]["COIN_COUNT"] - state["self"][1])/s.SCENARIOS["classic"]["COIN_COUNT"] 
     }
 
     # Compute the reward based on the events
@@ -257,8 +258,9 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         if event in game_rewards:
             reward_sum += game_rewards[event]
 
+
     # Add reward shaping based on the potential of the state and the next state
-    reward_sum += self.CONFIG["DISCOUNT_RATE"] * potential_of_state(next_state) - potential_of_state(state)    
+    reward_sum += self.CONFIG["DISCOUNT_RATE"] * potential_of_state(next_state, add_next_state) - potential_of_state(state, add_state)    
 
     # Add reward shaping based on the danger potential of the state and the next state
     # IMPORTANT: For the danger potential, we must use a discount factor of 1,
@@ -273,13 +275,12 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
     return reward_sum
 
 
-def handle_step(self, state: dict, action: str, reward: float, next_state: Union[dict, None], events: List[str], score: int, change_world_seed) -> None:
+def handle_step(self, state: dict, action: str, next_state: Union[dict, None], events: List[str], score: int, change_world_seed) -> None:
     """ Handle a training step in the environment.
 
     Args:
         state (dict): The current state of the environment.
         action (str): The action taken in the state.
-        reward (float): The reward received after taking the action.
         next_state (Union[dict, None]): The next state of the environment. None if the round/game has ended.
         events (List[str]): The events that occurred when going from the state to the next state.
         score (int): The score of the agent in the next state.
@@ -288,6 +289,28 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
 
     # The round/game has ended if the next state is None
     is_end_of_round = (next_state == None)    
+
+
+    # Set the additional state (which is the number of remaining coins and the number of remaining opponents)
+    add_state = np.array([self.num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(state["others"]) / 3])
+    # Initialize the next number of remaining coins
+    next_num_of_remaining_coins = self.num_of_remaining_coins if next_state is not None else 0
+    # Initialize the number of collected coins
+    collected_coins = 0
+    # Loop over the coins of the current game state
+    #assert self.prev_coins == state["coins"]
+    if next_state is not None:
+        for coin in state["coins"]:
+            # Check if the coin is not anymore in the next game state
+            if coin not in next_state["coins"]:
+                collected_coins += 1
+    # Update the number of remaining coins
+    next_num_of_remaining_coins -= collected_coins
+    # Set the additional next state (which is the next number of remaining coins and the next number of remaining opponents)
+    add_next_state = np.array([next_num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(next_state["others"]) / 3]) if next_state is not None else None
+
+    # Comput the reward
+    reward = get_reward(self, state=state, add_state=add_state, action=action, next_state=next_state, add_next_state=add_next_state, events=events)
 
     # Check if the agent is tested during training
     if self.test_training:
@@ -345,7 +368,7 @@ def handle_step(self, state: dict, action: str, reward: float, next_state: Union
     # Otherwise the agent is in training mode
     else:
         # Store the experience in the buffer
-        self.buffer.push(state=state_to_features(state), action=action, reward=reward, next_state=state_to_features(next_state))
+        self.buffer.push(state=state_to_features(state), add_state=add_state, action=action, reward=reward, next_state=state_to_features(next_state), add_next_state=add_next_state)
         # Update the exploration rate
         self.exploration_rate = update_exploration_rate(self, self.exploration_rate)
         # Update the weights importance (ONLY USED FOR PRIORITIZED EXPERIENCE REPLAY)
@@ -458,19 +481,19 @@ def train_network(self) -> None:
     self.local_q_network.train()
     for i in range(self.CONFIG["NUM_EPOCHS"]):
         # Sample a batch of experiences from the buffer
-        states, actions, rewards, next_states, dones, indices, weights = self.buffer.sample(batch_size=self.CONFIG["BATCH_SIZE"], weight_importance=self.weight_importance)
+        states, add_states, actions, rewards, next_states, add_next_states, dones, indices, weights = self.buffer.sample(batch_size=self.CONFIG["BATCH_SIZE"], weight_importance=self.weight_importance)
         # Get the Q-values of the taken actions for the states from the local Q-network
         # NB: Add a dummy dimension with unsqueeze(1) for the actions to obtain the shape (batch_size, 1)
         #     This is necessary because .gather requires the shape of the actions to match the shape of the output of the local Q-network
         # NB: Remove the dummy dimension with squeeze(1) to obtain the shape (batch_size, ) for q_values  
-        q_values = self.local_q_network(states).gather(dim=1, index=actions.unsqueeze(1)).squeeze(1)
+        q_values = self.local_q_network(states, add_states).gather(dim=1, index=actions.unsqueeze(1)).squeeze(1)
 
         # Initialize the next Q-values
         next_q_values = None
 
         if self.CONFIG["USE_DOUBLE_DQN"]:
             # Use the local Q-network to select the best actions (with the highest Q-value) for the next states
-            next_actions = self.local_q_network(next_states).argmax(dim=1)
+            next_actions = self.local_q_network(next_states, add_next_states).argmax(dim=1)
 
             # Use the target Q-network to compute the Q-values of the next states for the actions chosen by the local Q-network
             # NB: Add a dummy dimension with unsqueeze(1) for the actions to obtain the shape (batch_size, 1)
@@ -478,12 +501,12 @@ def train_network(self) -> None:
             # NB2: Detach the tensor to prevent backpropagation through the target Q-network
             # NB3: Remove the dummy dimension with squeeze(1) to obtain the shape (batch_size, ) for q_values  
             # The shape of next_q_values is (batch_size, )
-            next_q_values = self.target_q_network(next_states).gather(dim=1, index=next_actions.unsqueeze(1)).detach().squeeze(1) 
+            next_q_values = self.target_q_network(next_states, add_next_states).gather(dim=1, index=next_actions.unsqueeze(1)).detach().squeeze(1) 
         else: 
             # Get the maximum of the Q-values of the actions for the next states from the target Q-network
             # NB: Detach the tensor to prevent backpropagation through the target Q-network
             # The shape of next_q_values is (batch_size, )
-            next_q_values = self.target_q_network(next_states).detach().max(dim=1)[0]        
+            next_q_values = self.target_q_network(next_states, add_next_states).detach().max(dim=1)[0]        
         # Calculate the target Q-values
         target_q_values = rewards + self.CONFIG["DISCOUNT_RATE"] * next_q_values * (1 - dones)
         # Initialize the MSE loss

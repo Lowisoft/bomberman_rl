@@ -74,6 +74,7 @@ def setup(self) -> None:
         row_size=(s.ROWS - 2), 
         action_size=self.CONFIG["ACTION_SIZE"], 
         hidden_layer_size=self.CONFIG["HIDDEN_LAYER_SIZE"],
+        add_state_size=self.CONFIG["ADD_STATE_SIZE"],
         use_dueling_dqn=self.CONFIG["USE_DUELING_DQN"]
         ).to(self.device)
 
@@ -90,6 +91,12 @@ def setup(self) -> None:
     # Set the local network to evaluation mode
     self.local_q_network.eval()
 
+    # Store the number of remaining coins
+    self.num_of_remaining_coins = s.SCENARIOS["classic"]["COIN_COUNT"] 
+
+    # Store the coins of the previous game state
+    self.prev_coins = []
+
 
 def act(self, game_state: dict) -> str:
     """
@@ -100,11 +107,32 @@ def act(self, game_state: dict) -> str:
     :param game_state: The dictionary that describes everything on the board.
     :return: The action to take as a string.
     """
+
+    # Check if the game has just started
+    if game_state["step"] <= 1:
+        # Reset the number of remaining coins 
+        self.num_of_remaining_coins = s.SCENARIOS["classic"]["COIN_COUNT"]
+        # Reset the coins of the previous game state
+        self.prev_coins = []
+    else:
+        # Initialize the number of collected coins
+        collected_coins = 0
+        # Loop over the coins of the previous game state
+        for coin in self.prev_coins:
+            # Check if the coin is not anymore in the current game state
+            if coin not in game_state["coins"]:
+                collected_coins += 1
+        # Update the number of remaining coins
+        self.num_of_remaining_coins -= collected_coins
+        # Update the coins of the previous game state
+        self.prev_coins = [*game_state["coins"]]
     
     # Initialize the action
     action = "WAIT"
     # Get the features from the state
     features = state_to_features(game_state)
+    # Get the additional features from the state
+    add_features = np.array([self.num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(game_state["others"]) / 3])
 
     # Select the action using an epsilon-greedy policy
     # NB: If the agent is not trained or if the agent is tested during training, the exploration is disabled
@@ -112,14 +140,17 @@ def act(self, game_state: dict) -> str:
         # Return a random action
         action = action_index_to_str(random.randrange(self.CONFIG["ACTION_SIZE"]))
     else:
-        # Extract the features from the state and convert it to a tensor
+        # Convert features to a tensor and move it to the device
         # NB: Add a (dummy) batch dimension with unsqueeze(0) to obtain the shape (batch_size [= 1], channel_size, column_size, row_size)
         state = torch.from_numpy(features).float().unsqueeze(0).to(self.device)
+        # Convert additional features to a tensor and move it to the device
+        # NB: Add a (dummy) batch dimension with unsqueeze(0) to obtain the shape (batch_size [= 1], channel_size, column_size, row_size)
+        add_state = torch.from_numpy(add_features).float().unsqueeze(0).to(self.device)
         # Disable gradient tracking
         with torch.no_grad():
             # Get the Q-values of every action for the state from the local Q-network
             # The shape of action_q_values is (batch_size, action_size)
-            action_q_values = self.local_q_network(state)
+            action_q_values = self.local_q_network(state, add_state)
         # Return the action with the highest Q-value (by taking the argmax along the second dimension)
         # NB: The .item() method returns the value of the tensor as a standard Python number
         action = action_index_to_str(torch.argmax(action_q_values, dim=1).item())
@@ -213,7 +244,7 @@ def act(self, game_state: dict) -> str:
         self.loop_buffer.append((action, features_hash, features))
         
     #print("Action:", action)
-    return game_state['user_input']
+    return action
 
 
 def state_to_features(game_state: Union[dict, None]) -> np.array:

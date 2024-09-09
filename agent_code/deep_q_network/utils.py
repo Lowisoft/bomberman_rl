@@ -104,11 +104,11 @@ def crop_channel(channel: np.ndarray, border_size: int) -> np.ndarray:
     """ Crop the channel by removing the border.
 
     Args:
-        channel (np.array): The channel to crop.
+        channel (np.ndarray): The channel to crop.
         border_size (int): The size of the border to remove.
 
     Returns:
-        np.array: The cropped channel.
+        np.ndarray: The cropped channel.
     """
 
     # Crop the channel by removing the border
@@ -155,7 +155,7 @@ def num_crates_and_opponents_in_blast_coords(pos: np.ndarray, field: np.ndarray,
     """ Return the number of crates and the number of oppponents that are in the blast coords of the given bomb position.
 
     Args:
-        pos (np.npdarray): The postion of the bomb.
+        pos (np.ndarray): The postion of the bomb.
         field (np.ndarray): The current field of the game.
         others (List): The current list of opponents.
 
@@ -178,7 +178,7 @@ def num_crates_and_opponents_in_blast_coords(pos: np.ndarray, field: np.ndarray,
     num_opponents = sum(1 for other in others if other[3] in blast_coords)
 
     return num_crates, num_opponents
-
+    
 
 def is_bomb_at_pos(pos: np.ndarray, bombs: List) -> bool:
     """ Checks whether there is a bomb at the given position.
@@ -552,7 +552,7 @@ def manhattan_distance(a: Tuple, b: Tuple) -> int:
 
 def distance_to_best_coin(state: Union[dict, None]) -> Union[float, None]:
     """ Calculate the distance to the best coin (i.e. nearest coin where no other opponent is nearer).
-        Returns None if there is no best coin (not visible or other opponents nearer).
+        Returns None if there is no best coin (not visible, not reacheable or other opponents nearer).
     Args:
         state (Union[dict, None]): The state for which compute the distance.
 
@@ -617,10 +617,54 @@ def distance_to_best_coin(state: Union[dict, None]) -> Union[float, None]:
                 distance_to_coin = -1
         # Update the best coin distance
         # NB: Do not consider coins at the agent's position (which can happen in the initial state of the coin heaven scenario)
+        # NB2: Filter out unreachable coins (i.e. distance of -1)
         if (best_coin_distance == None or distance_to_coin < best_coin_distance) and distance_to_coin > 0:
             best_coin_distance = distance_to_coin
 
     return best_coin_distance
+
+
+def distance_to_nearest_opponent(state: Union[dict, None]) -> Union[float, None]:
+    """ Calculate the distance to the nearest opponent.
+        Returns None if there is no (reachable) opponent.
+    Args:
+        state (Union[dict, None]): The state for which compute the distance.
+
+    Returns:
+        Union[float, None]: The distance to the nearest opponent.
+    """
+
+    # Prepare the grid for the pathfinding algorithm (> 0: obstacle; <= 0: free)
+    numpy_grid = np.abs(np.copy(state["field"]))
+    # Consider also bombs as obstacles
+    # IMPORTANT: We do not have to consider opponents as obstacles, since we want to find the nearest opponent
+    for bomb in state["bombs"]:
+        numpy_grid[bomb[0]] = 1
+    # Create the grid for the pathfinding algorithm
+    # IMPORTANT: We must transpose the numpy matrix
+    grid = Grid(matrix=numpy_grid.T, inverse=True)
+    # Initialize the finder of the pathfinding algorithm
+    finder = BiAStarFinder()
+
+    # Get the position of the agent
+    agent_position = state["self"][3]
+    agent_node = grid.node(*agent_position)
+
+    nearest_opponent_distance = None
+    # Loop over all opponents
+    for opponent in state["others"]:
+        opponent_node = grid.node(*opponent[3])
+        path, _ = finder.find_path(agent_node, opponent_node, grid)
+        # Calculate the distance to the opponent
+        distance_to_opponent = len(path) - 1
+        # Cleanup the grid for the next potential iteration
+        grid.cleanup()
+        # Update the best opponent distance
+        # NB: Filter out unreachable opponents (i.e. distance of -1)
+        if (nearest_opponent_distance == None or distance_to_opponent < nearest_opponent_distance) and distance_to_opponent > 0:
+            nearest_opponent_distance = distance_to_opponent
+
+    return nearest_opponent_distance
 
 
 def distance_to_nearest_crate(state: Union[dict, None]) -> Union[float, None]:
@@ -636,6 +680,8 @@ def distance_to_nearest_crate(state: Union[dict, None]) -> Union[float, None]:
     # Prepare the grid for the pathfinding algorithm (-1: obstacle; 0: free, 1: crate)
     field = np.copy(state["field"])
     # Consider also bombs as obstacles
+    # IMPORTANT: We do not have to consider opponents as obstacles, since if there is an opponent blocking the nearest crate, 
+    #            the agent will target the opponent instead of the crate in potential_of_state
     for bomb in state["bombs"]:
         field[bomb[0]] = -1
     
@@ -688,11 +734,12 @@ def distance_to_nearest_crate(state: Union[dict, None]) -> Union[float, None]:
     return None
 
 
-def potential_of_state(state: Union[dict, None]) -> float:
+def potential_of_state(state: Union[dict, None], add_state: Union[np.ndarray, None]) -> float:
     """ Calculate the potential of the state.
 
     Args:
         state (Union[dict, None]): The state to calculate the potential of.
+        add_state (Union[np.ndarray, None]): Additional state information to calculate the potential of.
 
     Returns:
         float: The potential of the state.
@@ -702,20 +749,34 @@ def potential_of_state(state: Union[dict, None]) -> float:
     if state is None:
         return 0.0
 
-    # Check if there is any visible coin
-    if len(state["coins"]) > 0:
-        # If so, get the distance to the best coin
-        nearest_coin_distance = distance_to_best_coin(state)
-        # Return the potential based on the distance to the nearest coin
-        return 1.2 ** (-nearest_coin_distance) if nearest_coin_distance is not None else 0.0
+    # Get the distance to the best coin
+    best_coin_distance = distance_to_best_coin(state) if len(state["coins"]) > 0 else None
+
+    # Check if there is any coin to target
+    if best_coin_distance is not None:
+        # Return the potential based on the distance to the best coin
+        return 1.2 ** (-best_coin_distance) if best_coin_distance is not None else 0.0
     else:
-        # Otherwise, get the distance to the nearest crate
+        # Otherwise, get the distance to the nearest crate and to the nearest opponent
         nearest_crate_distance = distance_to_nearest_crate(state)
-        # Return the potential based on the distance to the nearest crate
-        # IMPORTANT: We add here + 1 to the negative of nearest_crate_distance since without it, the
-        #            the exponent can never get 0            
-        return (1.2 ** (-nearest_crate_distance + 1)) / 4 if nearest_crate_distance is not None else 0.0
-   
+        nearest_opponent_distance = distance_to_nearest_opponent(state)
+
+        # Extract the number of remaining coins from the additional state information
+        num_of_remaining_coins = add_state[0] if add_state is not None else 0
+
+        # Choose between the distances
+        # Take the distance to the nearest opponent if there is no remaining coin OR there is no crate OR the distance to the nearest opponent is smaller
+        if num_of_remaining_coins == 0 or nearest_crate_distance is None or (nearest_opponent_distance is not None and nearest_opponent_distance < nearest_crate_distance):
+            # Return the potential based on the distance to the nearest opponent
+            # IMPORTANT: We add here + 1 to the negative of nearest_opponent_distance since without it, the
+            #            the exponent can never get 0            
+            return (1.2 ** (-nearest_opponent_distance + 1)) / 4 if nearest_opponent_distance is not None else 0.0
+        else:
+            # Return the potential based on the distance to the nearest crate
+            # IMPORTANT: We add here + 1 to the negative of nearest_crate_distance since without it, the
+            #            the exponent can never get 0            
+            return (1.2 ** (-nearest_crate_distance + 1)) / 4 if nearest_crate_distance is not None else 0.0
+    
 
 def danger_potential_of_state(state: Union[dict, None]) -> float:
     """ Calculate the danger potential of the state.
