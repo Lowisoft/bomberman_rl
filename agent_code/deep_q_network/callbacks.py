@@ -294,6 +294,15 @@ def state_to_features(game_state: Union[dict, None]) -> np.array:
     # Add the channel to the list of channels
     channels.append(crop_channel(crates_channel, border_size))
 
+    # Create a channel for the opponents
+    opponents_channel = np.zeros((s.COLS, s.ROWS))
+    # Loop over all opponents
+    for opponent in game_state["others"]:
+        # Set the value of the opponent to 1
+        opponents_channel[opponent[3]] = 1
+    # Add the channel to the list of channels
+    channels.append(crop_channel(opponents_channel, border_size))
+
     # Stack the channels to obtain the shape (channel_size, column_size, row_size)
     stacked_channels = np.stack(channels)
 
