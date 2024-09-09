@@ -22,7 +22,8 @@ from .utils import (
     danger_potential_of_state, 
     num_crates_in_blast_coords,
     agent_has_trapped_itself,
-    action_index_to_str
+    action_index_to_str,
+    agents_waits_uselessly
 )
 
 # Custom events
@@ -202,8 +203,8 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         int: The reward for the action taken in the state.
     """
 
-    # Check if the agent performed a useless wait, i.e. waits but no blast coordinate is reacheable by the next step (s.BOMB_POWER + 1)
-    if action == "WAIT" and e.WAITED in events and not any(state["self"][3] in get_bomb_blast_coords(bomb[0][0], bomb[0][1], state["field"], s.BOMB_POWER + 1) for bomb in state["bombs"]): 
+    # Check if the agent performs a useless wait
+    if agents_waits_uselessly(state, action, next_state, events):
         events.append(USELESS_WAIT)
 
     # Initialize the number of crates attacked by the dropped bomb

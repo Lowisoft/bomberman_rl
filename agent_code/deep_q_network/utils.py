@@ -291,6 +291,46 @@ def agent_has_trapped_itself(state: dict,  action: str, next_state: Union[dict, 
     return False 
 
 
+def agents_waits_uselessly(state: dict, action: str, next_state: Union[dict, None], events: List[str]) -> bool:
+    """ Returns whether the agent waits uselessly.
+        A wait is useless if the agent waits on a blast coordinate OR if the agent waits but no blast coordinate is reacheable by the next step.
+
+    Args:
+        state (dict): The state before the action was taken.
+        action (str): The action taken in the state.
+        next_state (Union[dict, None]): The state after the action was taken. None if the round/game.
+        events (List[str]): The events that occurred when going from the state to the next state.
+
+    Returns:    
+        bool: Whether the agent waits uselessly.
+    """
+
+    if action == "WAIT" and e.WAITED in events:
+        agent_pos = state["self"][3]
+        # Get the neighboring coords of the agent (excluding the agent's current position, walls and crates)
+        neighboring_coords = []
+        x = agent_pos[0]
+        y = agent_pos[1]
+        if state["field"][x + 1, y] == 0:
+            neighboring_coords.append((x + 1, y))
+        if state["field"][x - 1, y] == 0:
+            neighboring_coords.append((x - 1, y))
+        if state["field"][x, y + 1] == 0:
+            neighboring_coords.append((x, y + 1))
+        if state["field"][x, y - 1] == 0:
+            neighboring_coords.append((x, y - 1))
+
+        # Get a list of all blast coordinates of all bombs
+        all_bomb_blast_coord = []
+        for bomb in state["bombs"]:
+            all_bomb_blast_coord.extend(get_bomb_blast_coords(bomb[0][0], bomb[0][1], state["field"], s.BOMB_POWER))
+
+        # Check if wait was useless,
+        # i.e. it waits on a blast coordinate OR it waits but no blast coordinate is reacheable by the next step
+        return agent_pos in all_bomb_blast_coord or all(neighboring_coord not in all_bomb_blast_coord and state["explosion_map"][neighboring_coord] == 0 for neighboring_coord in neighboring_coords) 
+    return False
+
+
 def round_ended_but_not_dead(self, game_state: dict) -> bool:
     """ Check if the the game/round ended but the agent is not dead.
         In this case, the last step is handled twice (in game_events_occurred and in end_of_round) and thus should be ignored once during training.
@@ -628,12 +668,14 @@ def distance_to_nearest_crate(state: Union[dict, None]) -> Union[float, None]:
                 # Check if the neighbor is not an obstacle and not visited
                 # IMPORTANT: If the neighbor is a crate, we must ensure that neither the current position (i.e. last position of path to crate)
                 #            nor the position of the crate itself is in any of the bomb blast coordinates. 
-                #            This ensures that no sub-optimal crate is targeted
+                #            This ensures that no sub-optimal crate is targeted.
                 if ((neighbor_x, neighbor_y) not in visited 
                     and (field[neighbor_x][neighbor_y] == 0 # Neighbor is a free tile
                         or (field[neighbor_x][neighbor_y] == 1 # Neighbor is a crate
                            and not (curr_x, curr_y) in all_bomb_blast_coord
-                           and not (neighbor_x, neighbor_y) in all_bomb_blast_coord))):
+                           and state["explosion_map"][curr_x][curr_y] == 0
+                           and not (neighbor_x, neighbor_y) in all_bomb_blast_coord
+                           and state["explosion_map"][neighbor_x][neighbor_y] == 0))):
                     visited.add((neighbor_x, neighbor_y))
                     queue.append([(neighbor_x, neighbor_y), distance + 1])
 
