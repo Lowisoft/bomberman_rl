@@ -115,7 +115,7 @@ def crop_channel(channel: np.ndarray, border_size: int) -> np.ndarray:
     return channel[border_size:-border_size, border_size:-border_size]
 
 
-def get_bomb_blast_coords(x: int, y: int, field: np.ndarray) -> list:
+def get_bomb_blast_coords(x: int, y: int, field: np.ndarray, power: int = s.BOMB_POWER) -> list:
     """ Get the coordinates of the blast of a bomb. Taken from item.py.
         NB: The blast only stops at walls but it does not stop at crates, players, coins or other bombs.
 
@@ -123,6 +123,7 @@ def get_bomb_blast_coords(x: int, y: int, field: np.ndarray) -> list:
         x (int): The x-coordinate of the bomb.
         y (int): The y-coordinate of the bomb.
         field (np.ndarray): The current field of the game.
+        power (int, optional): The power of the bomb. Defaults to s.BOMB_POWER.
 
     Returns:
         list: The coordinates of the blast of the bomb.
@@ -130,19 +131,19 @@ def get_bomb_blast_coords(x: int, y: int, field: np.ndarray) -> list:
 
     blast_coords = [(x, y)]
 
-    for i in range(1, s.BOMB_POWER + 1):
+    for i in range(1, power + 1):
         if field[x + i, y] == -1:
             break
         blast_coords.append((x + i, y))
-    for i in range(1, s.BOMB_POWER + 1):
+    for i in range(1, power + 1):
         if field[x - i, y] == -1:
             break
         blast_coords.append((x - i, y))
-    for i in range(1, s.BOMB_POWER + 1):
+    for i in range(1, power + 1):
         if field[x, y + i] == -1:
             break
         blast_coords.append((x, y + i))
-    for i in range(1, s.BOMB_POWER + 1):
+    for i in range(1, power + 1):
         if field[x, y - i] == -1:
             break
         blast_coords.append((x, y - i))
@@ -164,7 +165,7 @@ def num_crates_in_blast_coords(pos: np.ndarray, field: np.ndarray) -> bool:
     # Initialize the number of crates
     num_crates = 0
     # Get the blast coordinates of the bomb
-    blast_coords = get_bomb_blast_coords(pos[0], pos[1], field)
+    blast_coords = get_bomb_blast_coords(pos[0], pos[1], field, s.BOMB_POWER)
     for coord in blast_coords:
         # Check if there is a crate at the coord
         if field[coord] == 1:
@@ -504,14 +505,14 @@ def manhattan_distance(a: Tuple, b: Tuple) -> int:
     return distance
 
 
-def distance_to_nearest_coin(state: Union[dict, None]) -> Union[float, None]:
-    """ Calculate the distance to the nearest coin.
-        Returns None if there is no visible coin.
+def distance_to_best_coin(state: Union[dict, None]) -> Union[float, None]:
+    """ Calculate the distance to the best coin (i.e. nearest coin where no other opponent is nearer).
+        Returns None if there is no best coin (not visible or other opponents nearer).
     Args:
         state (Union[dict, None]): The state for which compute the distance.
 
     Returns:
-        Union[float, None]: The distance to the nearest coin.
+        Union[float, None]: The distance to the best coin.
     """
 
     # Prepare the grid for the pathfinding algorithm (> 0: obstacle; <= 0: free)
@@ -519,6 +520,11 @@ def distance_to_nearest_coin(state: Union[dict, None]) -> Union[float, None]:
     # Consider also bombs as obstacles
     for bomb in state["bombs"]:
         numpy_grid[bomb[0]] = 1
+    # Consider also opponents as obstacles
+    for other in state["others"]:
+        numpy_grid[other[3]] = 1
+    # Consider also the agent as an obstacle (for other opponents)
+    numpy_grid[state["self"][3]] = 1
     # Create the grid for the pathfinding algorithm
     # IMPORTANT: We must transpose the numpy matrix
     grid = Grid(matrix=numpy_grid.T, inverse=True)
@@ -529,7 +535,21 @@ def distance_to_nearest_coin(state: Union[dict, None]) -> Union[float, None]:
     agent_position = state["self"][3]
     agent_node = grid.node(*agent_position)
 
-    nearest_coin_distance = None
+    # Find the reachable opponents that could potentially steal the coin
+    reachable_opponents = []
+    # Loop over all opponents
+    for opponent in state["others"]:
+        opponent_node = grid.node(*opponent[3])
+        path, _ = finder.find_path(agent_node, opponent_node, grid)
+        # Calculate the distance to the opponent
+        distance_to_opponent = len(path) - 1
+        # Check if the opponent is reacheable
+        if distance_to_opponent > 0:
+            reachable_opponents.append(opponent)
+        # Cleanup the grid for the next potential iteration
+        grid.cleanup()
+
+    best_coin_distance = None
     # Loop over all coins
     for coin in state["coins"]:
         coin_node = grid.node(*coin)
@@ -538,12 +558,24 @@ def distance_to_nearest_coin(state: Union[dict, None]) -> Union[float, None]:
         distance_to_coin = len(path) - 1
         # Cleanup the grid for the next potential iteration
         grid.cleanup()
-        # Update the nearest coin distance
+        # Check if the coin cannot be stolen by any opponent
+        for opponent in reachable_opponents:
+            opponent_node = grid.node(*opponent[3])
+            opponent_path, _ = finder.find_path(opponent_node, coin_node, grid)
+            # Calculate the distance to the coin for the opponent
+            opponent_distance_to_coin = len(opponent_path) - 1
+            # Cleanup the grid for the next potential iteration
+            grid.cleanup()
+            # Check if the opponent can steal the coin
+            if opponent_distance_to_coin > 0 and opponent_distance_to_coin < distance_to_coin:
+                # If so, do not consider the coin
+                distance_to_coin = -1
+        # Update the best coin distance
         # NB: Do not consider coins at the agent's position (which can happen in the initial state of the coin heaven scenario)
-        if (nearest_coin_distance == None or distance_to_coin < nearest_coin_distance) and distance_to_coin > 0:
-            nearest_coin_distance = distance_to_coin
+        if (best_coin_distance == None or distance_to_coin < best_coin_distance) and distance_to_coin > 0:
+            best_coin_distance = distance_to_coin
 
-    return nearest_coin_distance
+    return best_coin_distance
 
 
 def distance_to_nearest_crate(state: Union[dict, None]) -> Union[float, None]:
@@ -568,7 +600,7 @@ def distance_to_nearest_crate(state: Union[dict, None]) -> Union[float, None]:
     # Get a list of all blast coordinates of all bombs
     all_bomb_blast_coord = []
     for bomb in state["bombs"]:
-        all_bomb_blast_coord.extend(get_bomb_blast_coords(bomb[0][0], bomb[0][1], state["field"]))
+        all_bomb_blast_coord.extend(get_bomb_blast_coords(bomb[0][0], bomb[0][1], state["field"], s.BOMB_POWER))
 
     # Directions for movement: UP, RIGHT, LEFT, DOWN
     directions = [(-1, 0), (1, 0), (0, -1), (0, 1)]
@@ -625,8 +657,8 @@ def potential_of_state(state: Union[dict, None]) -> float:
 
     # Check if there is any visible coin
     if len(state["coins"]) > 0:
-        # If so, get the distance to the nearest coin
-        nearest_coin_distance = distance_to_nearest_coin(state)
+        # If so, get the distance to the best coin
+        nearest_coin_distance = distance_to_best_coin(state)
         # Return the potential based on the distance to the nearest coin
         return 1.2 ** (-nearest_coin_distance) if nearest_coin_distance is not None else 0.0
     else:
@@ -665,7 +697,7 @@ def danger_potential_of_state(state: Union[dict, None]) -> float:
         # Only look at bombs where the agent could be in the blast coordinates
         if distance_to_bomb <= s.BOMB_POWER:
             # Get the blast coordinates of the bomb
-            blast_coords = get_bomb_blast_coords(bomb[0][0], bomb[0][1], state["field"])       
+            blast_coords = get_bomb_blast_coords(bomb[0][0], bomb[0][1], state["field"], s.BOMB_POWER)       
             for coord in blast_coords:
                 # Check if there the agent is in the blast coordinates
                 if agent_position[0] == coord[0] and agent_position[1] == coord[1]:

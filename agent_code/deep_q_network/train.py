@@ -202,8 +202,8 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         int: The reward for the action taken in the state.
     """
 
-    # Check if the agent performed a useless wait, i.e. waits but no bomb dropped
-    if action == "WAIT" and e.WAITED in events and state["self"][2]: 
+    # Check if the agent performed a useless wait, i.e. waits but no blast coordinate is reacheable by the next step (s.BOMB_POWER + 1)
+    if action == "WAIT" and e.WAITED in events and not any(state["self"][3] in get_bomb_blast_coords(bomb[0][0], bomb[0][1], state["field"], s.BOMB_POWER + 1) for bomb in state["bombs"]): 
         events.append(USELESS_WAIT)
 
     # Initialize the number of crates attacked by the dropped bomb
@@ -237,7 +237,7 @@ def get_reward(self, state: dict, action: str, next_state: Union[dict, None], ev
         #      not in a blast coordinate and for which the last tile of the path is also not in a blast coordinate is at least 4 steps
         #      away (crate_pot(4) - crate_pot(1) = -0.09). Besides, in a 11 x 11 field, the max distance to a crate is 16 and crate_pot(16) = 0.195.
         #      Thus, the total possible range of USEFUL_BOMB is 0.06 [= 0.25 - 0.195 + 0.05] to 0.26 [= 0.25 - 0.09 + 0.1] depending on the number of crates attacked
-        USEFUL_BOMB: 0.25 + 0.05 + 0.25*math.log(num_crates_attacked if num_crates_attacked > 0 else 1) + (0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else 0.0),
+        USEFUL_BOMB: 0.25 + 0.05 * (1 + (num_crates_attacked - 1) / 9) + (0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else 0.0),
         # NB: ONLY IF USE_DANGER_POTENTIAL: Similar to USEFUL_BOMB, the agent receives a penalty of -0.1 for placing a bomb due to the potential but we do NOT compensate this in USELESS_BOMB, since
         #     it should remain a penalty (negative)
         # NB2: Contrary to USEFUL_BOMB, the crate potential function does not drop down (since no crate attacked) and thus it does NOT have to be compensated.

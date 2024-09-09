@@ -16,7 +16,7 @@ from .utils import (
     load_network, 
     action_str_to_index,
     num_crates_in_blast_coords,
-    distance_to_nearest_coin,
+    distance_to_best_coin,
     distance_to_nearest_crate
 )
 from .model.network import Network
@@ -189,9 +189,9 @@ def act(self, game_state: dict) -> str:
                     next_game_state["self"] = tuple(next_game_state["self"])
                     # Check if there is at least one revealed coin
                     if len(game_state["coins"]) > 0:
-                        # If so, check if the chosen action is bad, i.e. does not reduce the distance to the nearest coin
-                        next_distance = distance_to_nearest_coin(next_game_state)
-                        curr_distance = distance_to_nearest_coin(game_state)
+                        # If so, check if the chosen action is bad, i.e. does not reduce the distance to the best coin
+                        next_distance = distance_to_best_coin(next_game_state)
+                        curr_distance = distance_to_best_coin(game_state)
                         if next_distance is not None and curr_distance is not None and next_distance >= curr_distance:
                              # Perform a random action but exclude the forbidden actions
                             while action in forbidden_actions:
@@ -265,7 +265,7 @@ def state_to_features(game_state: Union[dict, None]) -> np.array:
         # Calculate the danger of the bomb (ranges from 1 to 4)
         danger = (s.BOMB_TIMER) - bomb[1]
         # Get the coordinates of the bomb blast
-        blast_coords = get_bomb_blast_coords(bomb[0][0], bomb[0][1], game_state["field"])
+        blast_coords = get_bomb_blast_coords(bomb[0][0], bomb[0][1], game_state["field"], s.BOMB_POWER)
         # Loop over all coordinates of the bomb blast
         for coord in blast_coords:
             # Set the value of the bomb blast to the danger of the bomb if there is not already a stronger danger
