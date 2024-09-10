@@ -783,11 +783,12 @@ def potential_of_state(state: Union[dict, None], add_state: Union[np.ndarray, No
         nearest_opponent_distance = distance_to_nearest_opponent(state)
 
         # Extract the number of remaining coins from the additional state information
-        num_of_remaining_coins = add_state[0] if add_state is not None else 0
+        # IMPORTANT: This value is normalized
+        normalized_num_of_remaining_coins = add_state[0] if add_state is not None else 0
 
         # Choose between the distances
         # Take the distance to the nearest opponent if there is no remaining coin OR there is no crate OR the distance to the nearest opponent is smaller
-        if num_of_remaining_coins == 0 or nearest_crate_distance is None or (nearest_opponent_distance is not None and nearest_opponent_distance < nearest_crate_distance):
+        if normalized_num_of_remaining_coins == 0 or nearest_crate_distance is None or (nearest_opponent_distance is not None and nearest_opponent_distance < nearest_crate_distance):
             # Return the potential based on the distance to the nearest opponent
             # IMPORTANT: We add here + 1 to the negative of nearest_opponent_distance since without it, the
             #            the exponent can never get 0            
