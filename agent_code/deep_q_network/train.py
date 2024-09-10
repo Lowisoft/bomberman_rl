@@ -261,7 +261,7 @@ def get_reward(self, state: dict, add_state: np.ndarray, action: str, next_state
         USELESS_BOMB: -0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else -0.15,
         TRAPPED_ITSELF: -0.5,
         # Penalize the agent for dying by the number of coins and opponents left (normalized)
-        e.GOT_KILLED: -(s.REWARD_COIN * self.num_of_remaining_coins + s.REWARD_KILL * len(state["others"]))/(s.REWARD_COIN * s.SCENARIOS["classic"]["COIN_COUNT"] + s.REWARD_KILL * self.CONFIG["NUM_OPPONENTS"]),
+        e.GOT_KILLED: min(-0.5, -(s.REWARD_COIN * self.num_of_remaining_coins + s.REWARD_KILL * len(state["others"]))/(s.REWARD_COIN * s.SCENARIOS["classic"]["COIN_COUNT"] + s.REWARD_KILL * self.CONFIG["NUM_OPPONENTS"])),
     }
 
     # Compute the reward based on the events
