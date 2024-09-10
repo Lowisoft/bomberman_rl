@@ -100,6 +100,27 @@ def action_index_to_str(index: int) -> str:
   return action_mapping[index]
 
 
+def end_reason_str_to_index(end_reason: str) -> int:
+  """ Convert an end reason string to an index.
+
+  Args:
+      end_reason (str): The end reason as a string.
+
+  Returns:
+      int: The index of the end reasion.
+  """
+
+  # Define the mapping from the end reason strings to the indices
+  end_reason_mapping = {
+      e.KILLED_SELF: 0,
+      e.GOT_KILLED: 1,
+      e.SURVIVED_ROUND: 2
+  }
+
+  # Return the index of the end reason
+  return end_reason_mapping[end_reason]
+
+
 def crop_channel(channel: np.ndarray, border_size: int) -> np.ndarray:
     """ Crop the channel by removing the border.
 

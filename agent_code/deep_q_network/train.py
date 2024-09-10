@@ -23,7 +23,8 @@ from .utils import (
     num_crates_and_opponents_in_blast_coords,
     agent_has_trapped_itself,
     action_index_to_str,
-    agents_waits_uselessly
+    agents_waits_uselessly,
+    end_reason_str_to_index
 )
 
 # Custom events
@@ -100,6 +101,8 @@ def setup_training(self) -> None:
     self.training_reward_of_round = 0
     # Initialize the numbers of crates destroyed per round/game during training
     self.training_destroyed_crates_of_round = 0
+    # Initialize the numbers of kills per round/game during training
+    self.training_kills_of_round = 0
     # Initialize the number of bombs dropped per round/game during training
     self.training_dropped_bombs_of_round = 0
     # Initialize the number of loops broken per round/game during training
@@ -107,6 +110,8 @@ def setup_training(self) -> None:
         self.training_broken_loops_of_round = 0
     # Initialize the start time of the training
     self.training_start_time = time.time()
+    # Initialize the list of opponents encountered per round/game (used for computing the potential best other score)
+    self.all_opponents_of_round = []
     # Initialize whether the agent is tested during training on a set of rounds/games with a fixed seed 
     self.test_training = False
     # Initialize whether the testing during training should be started in the next game/round
@@ -117,8 +122,14 @@ def setup_training(self) -> None:
     self.test_total_reward = 0
     # Initialize the total score in the testing phase
     self.test_total_score = 0
+    # Initialize the total kills in the testing phase
+    self.test_total_kills = 0
     # Initialize the total steps in the testing phase
     self.test_total_steps = 0
+    # Initialize the total so far best other score in the testing phase
+    self.test_total_so_far_best_other_score = 0
+    # Initialize the total remaining score in the testing phase
+    self.test_total_remaining_score_for_agent = 0
     # Initialize the testing seed (so that each testing phase is is run on the same set of rounds/games)
     self.test_seed = self.CONFIG["TEST_SEED"]
 
@@ -159,7 +170,7 @@ def game_events_occurred(self, old_game_state: dict, self_action: str, new_game_
             action=self_action, 
             next_state=new_game_state,
             events=events,
-            score=new_game_state["self"][1],
+            score=old_game_state["self"][1],
             change_world_seed=new_game_state["change_world_seed"])
 
 
@@ -286,12 +297,17 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
         action (str): The action taken in the state.
         next_state (Union[dict, None]): The next state of the environment. None if the round/game has ended.
         events (List[str]): The events that occurred when going from the state to the next state.
-        score (int): The score of the agent in the next state.
+        score (int): The score of the agent in the state (before the action was taken).
         change_world_seed (function): Function to change the seed of the world.
     """
 
     # The round/game has ended if the next state is None
     is_end_of_round = (next_state == None)    
+
+    # Get the score obtained by making the action in the state
+    score_of_action = events.count(e.COIN_COLLECTED) * s.REWARD_COIN + events.count(e.KILLED_OPPONENT) * s.REWARD_KILL
+    # Extend the score based on the score of the action
+    score += score_of_action
 
     # Set the additional state (which is the number of remaining coins and the number of remaining opponents)
     add_state = np.array([self.num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(state["others"]) / self.CONFIG["NUM_OPPONENTS"]])
@@ -311,8 +327,24 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
     # Set the additional next state (which is the next number of remaining coins and the next number of remaining opponents)
     add_next_state = np.array([next_num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(next_state["others"]) / self.CONFIG["NUM_OPPONENTS"]]) if next_state is not None else None
 
-    # Comput the reward
+    # Comput the reward for the action taken in the state
     reward = get_reward(self, state=state, add_state=add_state, action=action, next_state=next_state, add_next_state=add_next_state, events=events)
+
+    # Update the list of opponents encountered in the round/game
+    # NB: We use state instead of next_state, since if end_of_round is True, next_state is None and state is the last state of the round/game
+    if len(self.all_opponents_of_round) == 0:
+        self.all_opponents_of_round = state["others"]
+    else:
+        # Loop over the opponents in the current state
+        for opponent in state["others"]:
+            # Loop over the stored opponents in the round/game
+            for index, stored_opponent in enumerate(self.all_opponents_of_round):
+                # Find the opponent in the stored opponents
+                if opponent[0] == stored_opponent[0]:
+                    # Update the stored opponent
+                    self.all_opponents_of_round[index] = opponent
+                    # Break the inner loop
+                    break
 
     # Check if the agent is tested during training
     if self.test_training:
@@ -324,7 +356,14 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
             self.test_rounds += 1
             # Add the score to the total score
             self.test_total_score += score
+            # Add the kills to the total kills
+            self.test_total_kills += events.count(e.KILLED_OPPONENT)
+            # Add the steps to the total steps
             self.test_total_steps += state["step"]
+            # Add the so far best other score to the total potential best other score
+            self.test_total_so_far_best_other_score += get_so_far_best_other_score(self, events)
+            # Add the remaining score for the agent to the total remaining score
+            self.test_total_remaining_score_for_agent += s.REWARD_COIN * self.num_of_remaining_coins + s.REWARD_KILL * len(state["others"]) - score_of_action
             # Check if the testing phase is over
             if self.test_rounds == self.CONFIG["ROUNDS_PER_TEST"]:
                 self.test_training = False
@@ -333,9 +372,19 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
                 # Compute the average reward, score, and steps in the testing phase
                 test_avg_reward = self.test_total_reward / self.CONFIG["ROUNDS_PER_TEST"]
                 test_avg_score = self.test_total_score / self.CONFIG["ROUNDS_PER_TEST"]
+                test_avg_kills = self.test_total_kills / self.CONFIG["ROUNDS_PER_TEST"]
                 test_avg_steps = self.test_total_steps / self.CONFIG["ROUNDS_PER_TEST"]
+                test_avg_so_far_best_other_score = self.test_total_so_far_best_other_score / self.CONFIG["ROUNDS_PER_TEST"]
+                test_avg_remaining_score_for_agent = self.test_total_remaining_score_for_agent / self.CONFIG["ROUNDS_PER_TEST"]
                 # Log the results of the testing phase
-                wandb.log({ "test_avg_reward": test_avg_reward, "test_avg_score": test_avg_score, "test_avg_steps": test_avg_steps }, step=self.training_steps)
+                wandb.log({ 
+                    "test_avg_reward": test_avg_reward,
+                    "test_avg_score": test_avg_score,
+                    "test_avg_kills": test_avg_kills,
+                    "test_avg_steps": test_avg_steps,
+                    "test_avg_so_far_best_other_score": test_avg_so_far_best_other_score,
+                    "test_avg_remaining_score_for_agent": test_avg_remaining_score_for_agent,
+                }, step=self.training_steps)
                 # Check if the average score is higher than the best score
                 is_test_best_avg_score = False
                 if test_avg_score > self.test_best_avg_score:
@@ -382,6 +431,8 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
         self.training_reward_of_round += reward
         # Increment the number of crates destroyed in the round/game during training
         self.training_destroyed_crates_of_round += events.count(e.CRATE_DESTROYED)
+        # Increment the number of kills in the round/game during training
+        self.training_kills_of_round += events.count(e.KILLED_OPPONENT)
         # Increment the number of dropped bombs in the round/game during training
         self.training_dropped_bombs_of_round += events.count(e.BOMB_DROPPED)
         # Check if the agent should be trained and if the buffer has enough experiences to sample a batch
@@ -399,16 +450,31 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
         if is_end_of_round:
             # Increment the number of rounds/games performed in training
             self.training_rounds += 1
+            # Get the reason for the end of the round/game in training
+            training_end_reason_of_round = e.SURVIVED_ROUND
+            if e.KILLED_SELF in events:
+                training_end_reason_of_round = e.KILLED_SELF
+            elif e.GOT_KILLED in events:
+                training_end_reason_of_round = e.GOT_KILLED
+            # Get the so far best other score in the round/game during training
+            training_so_far_best_other_score = get_so_far_best_other_score(self, events)
+            # Get the remaining score for the agent in the round/game during training
+            training_remaining_score_for_agent = s.REWARD_COIN * self.num_of_remaining_coins + s.REWARD_KILL * len(state["others"]) - score_of_action
             # Log the stats of the round/game during training
             wandb.log({ 
                 "training_reward_of_round": self.training_reward_of_round,
                 "training_destroyed_crates_of_round": self.training_destroyed_crates_of_round,
+                "training_kills_of_round": self.training_kills_of_round,
+                "training_end_reason_of_round": end_reason_str_to_index(training_end_reason_of_round),
+                "training_so_far_best_other_score": training_so_far_best_other_score,
+                "training_remaining_score_for_agent": training_remaining_score_for_agent,
                 "training_dropped_bombs_of_round": self.training_dropped_bombs_of_round,
                 "training_score_of_round": score, 
                 "training_steps_of_round": state["step"],
                 "training_round": self.training_rounds,
                 "exploration_rate": self.exploration_rate,
                 }, step=self.training_steps)
+
             # Log the weights importance (ONLY USED FOR PRIORITIZED EXPERIENCE REPLAY)
             if self.CONFIG["USE_PER"]:
                 wandb.log({ "weight_importance": self.weight_importance }, step=self.training_steps)
@@ -419,8 +485,12 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
             self.training_reward_of_round = 0
             # Reset the number of destroyed crates in the round/game during training
             self.training_destroyed_crates_of_round = 0
+            # Reset the number of kills in the round/game during training
+            self.training_kills_of_round = 0
             # Reset the number of dropped bombs in the round/game during training
             self.training_dropped_bombs_of_round = 0
+            # Reset the list of opponents encountered in the round/game during training
+            self.all_opponents_of_round = []
             # Clear the loop buffer and reset the number of broken loops in the round/game during training
             if self.CONFIG["BREAK_LOOPS"]:
                 self.loop_buffer.clear()
@@ -442,10 +512,43 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
                 self.test_total_reward = 0
                 # Reset the total score in the testing phase
                 self.test_total_score = 0
+                # Reset the total kills in the testing phase
+                self.test_total_kills = 0
                 # Reset the total steps in the testing phase
                 self.test_total_steps = 0
+                # Reset the total so far best other in the testing phase
+                self.test_total_so_far_best_other_score = 0
+                # Reset the total remaining score for the agent in the testing phase
+                self.test_total_remaining_score_for_agent = 0
                 # Set the seed for the testing phase
                 set_seed(self.test_seed, change_world_seed, self.use_cuda)
+
+
+def get_so_far_best_other_score(self, events: List[str]) -> int:
+    """ Compute the so far best other score in the round/game.
+
+    Args:
+        events (List[str]): The events that occurred in the round/game.
+
+    Returns:
+        int: The so far best other score in the round/game.
+    """
+    # Determine the killer of the agent (if any)
+    agent_killer = None
+    if e.GOT_KILLED in events and not e.KILLED_SELF in events:
+        agent_killer = [event for event in events if event.startswith("KILLED_BY")][0].split(":")[1]
+
+    # Initialize the ccurrent best other score
+    current_best_other_score = 0
+    # Loop over the opponents in the round/game
+    for opponent in self.all_opponents_of_round:
+        # Check if the opponent has a higher score than the current best other score
+        score = opponent[1] + (s.REWARD_KILL if agent_killer and opponent[0] == agent_killer else 0)
+        if current_best_other_score < score:
+            # Update the current best other score
+            current_best_other_score = score
+
+    return current_best_other_score
 
 
 def update_exploration_rate(self, exploration_rate: float) -> float:

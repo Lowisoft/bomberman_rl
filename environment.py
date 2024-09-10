@@ -265,6 +265,7 @@ class GenericWorld:
                             explosion.owner.update_score(s.REWARD_KILL)
                             explosion.owner.add_event(e.KILLED_OPPONENT)
                             explosion.owner.trophies.append(pygame.transform.smoothscale(a.avatar, (15, 15)))
+                            a.add_event("KILLED_BY:" + explosion.owner.name) # MANUALLY ADDED
 
         # Remove hit agents
         for a in agents_hit:
