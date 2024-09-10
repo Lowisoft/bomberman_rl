@@ -457,17 +457,17 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
             elif e.GOT_KILLED in events:
                 training_end_reason_of_round = e.GOT_KILLED
             # Get the so far best other score in the round/game during training
-            training_so_far_best_other_score = get_so_far_best_other_score(self, events)
+            training_so_far_best_other_score_of_round = get_so_far_best_other_score(self, events)
             # Get the remaining score for the agent in the round/game during training
-            training_remaining_score_for_agent = s.REWARD_COIN * self.num_of_remaining_coins + s.REWARD_KILL * len(state["others"]) - score_of_action
+            training_remaining_score_for_agent_of_round = s.REWARD_COIN * self.num_of_remaining_coins + s.REWARD_KILL * len(state["others"]) - score_of_action
             # Log the stats of the round/game during training
             wandb.log({ 
                 "training_reward_of_round": self.training_reward_of_round,
                 "training_destroyed_crates_of_round": self.training_destroyed_crates_of_round,
                 "training_kills_of_round": self.training_kills_of_round,
                 "training_end_reason_of_round": end_reason_str_to_index(training_end_reason_of_round),
-                "training_so_far_best_other_score": training_so_far_best_other_score,
-                "training_remaining_score_for_agent": training_remaining_score_for_agent,
+                "training_so_far_best_other_score_of_round": training_so_far_best_other_score_of_round,
+                "training_remaining_score_for_agent_of_round": training_remaining_score_for_agent_of_round,
                 "training_dropped_bombs_of_round": self.training_dropped_bombs_of_round,
                 "training_score_of_round": score, 
                 "training_steps_of_round": state["step"],
