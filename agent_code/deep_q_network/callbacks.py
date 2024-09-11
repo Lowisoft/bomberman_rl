@@ -132,7 +132,11 @@ def act(self, game_state: dict) -> str:
     # Get the features from the state
     features = state_to_features(game_state)
     # Get the additional features from the state
-    add_features = np.array([self.num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(game_state["others"]) / self.CONFIG["NUM_OPPONENTS"]])
+    add_features = np.array([
+        self.num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], # Normalize the number of remaining coins
+        len(game_state["others"]) / self.CONFIG["NUM_OPPONENTS"], # Normalize the number of opponents
+        int(game_state["self"][2]) # Whether the agent can place a bomb
+    ])
 
     # Select the action using an epsilon-greedy policy
     # NB: If the agent is not trained or if the agent is tested during training, the exploration is disabled

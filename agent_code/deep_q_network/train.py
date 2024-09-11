@@ -308,7 +308,11 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
     score += score_of_action
 
     # Set the additional state (which is the number of remaining coins and the number of remaining opponents)
-    add_state = np.array([self.num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(state["others"]) / self.CONFIG["NUM_OPPONENTS"]])
+    add_state = np.array([
+        self.num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], # Normalize the number of remaining coins
+        len(state["others"]) / self.CONFIG["NUM_OPPONENTS"], # Normalize the number of opponents
+        int(state["self"][2]) # Whether the agent can place a bomb
+    ])
     # Initialize the next number of remaining coins
     next_num_of_remaining_coins = self.num_of_remaining_coins if next_state is not None else 0
     # Initialize the number of collected coins
@@ -323,7 +327,11 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
     # Update the number of remaining coins
     next_num_of_remaining_coins -= collected_coins
     # Set the additional next state (which is the next number of remaining coins and the next number of remaining opponents)
-    add_next_state = np.array([next_num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], len(next_state["others"]) / self.CONFIG["NUM_OPPONENTS"]]) if next_state is not None else None
+    add_next_state = np.array([
+        next_num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], # Normalize the number of remaining coins
+        len(next_state["others"]) / self.CONFIG["NUM_OPPONENTS"], # Normalize the number of opponents
+        int(next_state["self"][2]) # Whether the agent can place a bomb
+    ]) if next_state is not None else None
 
     # Comput the reward for the action taken in the state
     reward = get_reward(self, state=state, add_state=add_state, action=action, next_state=next_state, add_next_state=add_next_state, events=events)
