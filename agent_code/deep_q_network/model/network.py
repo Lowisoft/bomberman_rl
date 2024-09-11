@@ -24,26 +24,61 @@ class Network(nn.Module):
         # Store whether the dueling DQN architecture is used
         self.use_dueling_dqn = use_dueling_dqn
 
-        # Calculate the size of the flattened feature map after the convolutional layers
-        self.feature_size = 16 * (column_size - 2) * (row_size - 2)
+        # Make sure that the input size is a square
+        assert column_size == row_size
+
+        # Define the convolutional layers
+        # Check if the agent play on the original grid size (minus borders)
+        if column_size == 15:
+            print("Using original grid size.")
+            self.conv_layers = nn.Sequential(
+                # Input: (batch_size, channel_size, 15, 15)
+                # Output: (batch_size, 8, 15, 15)
+                nn.Conv2d(in_channels=channel_size, out_channels=8, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                # Input: (batch_size, 8, 15, 15)
+                # Output: (batch_size, 16, 15, 15)
+                nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                # Input: (batch_size, 16, 15, 15)
+                # Output: (batch_size, 32, 13, 13)
+                nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=0),
+                nn.ReLU(),
+                # Input: (batch_size, 32, 13, 13)
+                # Output: (batch_size, 32, 6, 6)
+                nn.MaxPool2d(kernel_size=2, stride=2),
+                # Input: (batch_size, 32, 6, 6)
+                # Output: (batch_size, 64, 4, 4)
+                nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=0),
+                nn.ReLU(),
+                # Input: (batch_size, 64, 4, 4)
+                # Output: (batch_size, 64 * 4 * 4)
+                nn.Flatten(),
+            )
+
+            # Calculate the size of the flattened feature map after the convolutional layers
+            self.feature_size = 64 * 4 * 4 # = 1024
+            
+        else:
+            self.conv_layers = nn.Sequential(
+                # Input: (batch_size, channel_size, column_size, row_size)
+                    # Output: (batch_size, 8, column_size, row_size)
+                    nn.Conv2d(in_channels=channel_size, out_channels=8, kernel_size=3, stride=1, padding=1),
+                    nn.ReLU(),
+                    # Input: (batch_size, 8, column_size, row_size)
+                    # Output: (batch_size, 16, column_size - 2, row_size - 2)
+                    nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=1, padding=0),
+                    nn.ReLU(),
+                    # Input: (batch_size, 16, column_size - 2, row_size - 2)
+                    # Output: (batch_size, self.feature_size)
+                    nn.Flatten(),
+            )
+
+            # Calculate the size of the flattened feature map after the convolutional layers
+            self.feature_size = 16 * (column_size - 2) * (row_size - 2)
 
         # Calculate the size of the input to the fully connected layer
         self.input_size = self.feature_size + add_state_size
-
-        # Define the convolutional layers
-        self.conv_layers = nn.Sequential(
-              # Input: (batch_size, channel_size, column_size, row_size)
-                # Output: (batch_size, 8, column_size, row_size)
-                nn.Conv2d(in_channels=channel_size, out_channels=8, kernel_size=3, stride=1, padding=1),
-                nn.ReLU(),
-                # Input: (batch_size, 8, column_size, row_size)
-                # Output: (batch_size, 16, column_size - 2, row_size - 2)
-                nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=1, padding=0),
-                nn.ReLU(),
-                # Input: (batch_size, 16, column_size - 2, row_size - 2)
-                # Output: (batch_size, self.feature_size)
-                nn.Flatten(),
-        )
 
         if self.use_dueling_dqn:
             # Define the advantage layers
