@@ -633,13 +633,16 @@ def distance_to_best_coin(state: Union[dict, None]) -> Union[float, None]:
             # Cleanup the grid for the next potential iteration
             grid.cleanup()
             # Check if the opponent can steal the coin
-            if opponent_distance_to_coin > 0 and opponent_distance_to_coin < distance_to_coin:
+            # NB: The opponent can steal the coin if it is nearer than 75% of the distance of the agent to the coin
+            #     This means that if the agent has a distance of 2 or 3 to the coin, then the opponent must only have a distance of at least one less,
+            #     but if the agent has a distance of 4 to the coin, the opponent must have a distance of 2 or less (since strictly less)
+            if opponent_distance_to_coin > 0 and opponent_distance_to_coin < 0.75 * distance_to_coin:
                 # If so, do not consider the coin
                 distance_to_coin = -1
         # Update the best coin distance
         # NB: Do not consider coins at the agent's position (which can happen in the initial state of the coin heaven scenario)
         # NB2: Filter out unreachable coins (i.e. distance of -1)
-        if (best_coin_distance == None or distance_to_coin < best_coin_distance) and distance_to_coin > 0:
+        if distance_to_coin > 0 and (best_coin_distance == None or distance_to_coin < best_coin_distance):
             best_coin_distance = distance_to_coin
 
     return best_coin_distance
@@ -667,6 +670,11 @@ def distance_to_nearest_opponent(state: Union[dict, None]) -> Union[float, None]
     # Initialize the finder of the pathfinding algorithm
     finder = BiAStarFinder()
 
+    # Get a list of all blast coordinates of all bombs
+    all_bomb_blast_coord = []
+    for bomb in state["bombs"]:
+        all_bomb_blast_coord.extend(get_bomb_blast_coords(bomb[0][0], bomb[0][1], state["field"], s.BOMB_POWER))
+
     # Get the position of the agent
     agent_position = state["self"][3]
     agent_node = grid.node(*agent_position)
@@ -682,7 +690,14 @@ def distance_to_nearest_opponent(state: Union[dict, None]) -> Union[float, None]
         grid.cleanup()
         # Update the best opponent distance
         # NB: Filter out unreachable opponents (i.e. distance of -1)
-        if (nearest_opponent_distance == None or distance_to_opponent < nearest_opponent_distance) and distance_to_opponent > 0:
+        # NB2: Filter out opponents (last element in path) that are in the blast coordinates
+        # NB3: Filter out opponents for which the field before them (next to last element in path) is in the blast coordinates
+        if (distance_to_opponent > 0
+            and (nearest_opponent_distance == None or distance_to_opponent < nearest_opponent_distance) 
+            and (path[-1].x, path[-1].y) not in all_bomb_blast_coord
+            and state["explosion_map"][path[-1].x][path[-1].y] == 0
+            and (path[-2].x, path[-2].y) not in all_bomb_blast_coord
+            and state["explosion_map"][path[-2].x][path[-2].y] == 0):
             nearest_opponent_distance = distance_to_opponent
 
     return nearest_opponent_distance
@@ -787,17 +802,17 @@ def potential_of_state(state: Union[dict, None], add_state: Union[np.ndarray, No
         normalized_num_of_remaining_coins = add_state[0] if add_state is not None else 0
 
         # Choose between the distances
-        # Take the distance to the nearest opponent if there is no remaining coin OR there is no crate OR the distance to the nearest opponent is smaller
-        if normalized_num_of_remaining_coins == 0 or nearest_crate_distance is None or (nearest_opponent_distance is not None and nearest_opponent_distance < nearest_crate_distance):
+        # Take the distance to the nearest opponent if there is no remaining coin OR there is no crate OR the distance to the nearest opponent is smaller (and smaller than s.BOMB_POWER)
+        if normalized_num_of_remaining_coins == 0 or nearest_crate_distance is None or (nearest_opponent_distance is not None and nearest_opponent_distance < nearest_crate_distance and nearest_opponent_distance <= s.BOMB_POWER):
             # Return the potential based on the distance to the nearest opponent
             # IMPORTANT: We add here + 1 to the negative of nearest_opponent_distance since without it, the
             #            the exponent can never get 0            
-            return (1.2 ** (-nearest_opponent_distance + 1)) / 4 if nearest_opponent_distance is not None else 0.0
+            return (1.2 ** (-nearest_opponent_distance + 1)) / 3 if nearest_opponent_distance is not None else 0.0
         else:
             # Return the potential based on the distance to the nearest crate
             # IMPORTANT: We add here + 1 to the negative of nearest_crate_distance since without it, the
             #            the exponent can never get 0            
-            return (1.2 ** (-nearest_crate_distance + 1)) / 4 if nearest_crate_distance is not None else 0.0
+            return (1.2 ** (-nearest_crate_distance + 1)) / 3 if nearest_crate_distance is not None else 0.0
     
 
 def danger_potential_of_state(state: Union[dict, None]) -> float:

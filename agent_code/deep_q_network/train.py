@@ -249,19 +249,19 @@ def get_reward(self, state: dict, add_state: np.ndarray, action: str, next_state
         e.INVALID_ACTION: -0.1,
         USELESS_WAIT: -0.1,
         # NB: ONLY IF USE_DANGER_POTENTIAL: The agent receives a penalty of -0.1 for placing a bomb due to the potential so we compensate this in USEFUL_BOMB
-        # NB2: The agent receives a penalty of at most -0.25 for dropping down in the crate potential function since now the distance to 
+        # NB2: The agent receives a penalty of at most -0.33 for dropping down in the crate potential function since now the distance to 
         #      another crate is used, which is further away. Note that the agent drops at least -0.09 because the next crate that is 
         #      not in a blast coordinate and for which the last tile of the path is also not in a blast coordinate is at least 4 steps
-        #      away (crate_pot(4) - crate_pot(1) = -0.09). Besides, in a 11 x 11 field, the max distance to a crate is 16 and crate_pot(16) = 0.195.
-        #      Thus, the total possible range of USEFUL_BOMB is 0.115 [= 0.25 + 0.05 - 0.195 + 0.01 + 0] to 0.41 [= 0.25 + 0.05 - 0.09 + 0.1 + 0.1] depending on the number of crates and opponents attacked
-        USEFUL_BOMB: 0.25 + 0.05 + 0.1 * (num_crates_attacked / 10) + 0.1 * (num_opponents_attacked / self.CONFIG["NUM_OPPONENTS"]) + (0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else 0.0),
+        #      away (crate_pot(4) - crate_pot(1) = -0.12). Besides, in a 11 x 11 field, the max distance to a crate is 16 and crate_pot(16) - crate_pot(1) = -0.26.
+        #      Thus, the total possible range of USEFUL_BOMB is 0.14 [= 0.33 + 0.05 - 0.26 + 0.02 + 0] to 0.66 [= 0.33 + 0.05 - 0.12 + 0.2 + 0.2] depending on the number of crates and opponents attacked
+        USEFUL_BOMB: 0.33 + 0.05 + 0.2 * (num_crates_attacked / 10) + 0.2 * (num_opponents_attacked / self.CONFIG["NUM_OPPONENTS"]) + (0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else 0.0),
         # NB: ONLY IF USE_DANGER_POTENTIAL: Similar to USEFUL_BOMB, the agent receives a penalty of -0.1 for placing a bomb due to the potential but we do NOT compensate this in USELESS_BOMB, since
         #     it should remain a penalty (negative)
         # NB2: Contrary to USEFUL_BOMB, the crate potential function does not drop down (since no crate attacked) and thus it does NOT have to be compensated.
-        USELESS_BOMB: -0.1 if self.CONFIG["USE_DANGER_POTENTIAL"] else -0.15,
-        TRAPPED_ITSELF: -0.5,
-        # Penalize the agent for dying by the number of coins and opponents left (normalized)
-        e.GOT_KILLED: min(-0.5, -(s.REWARD_COIN * self.num_of_remaining_coins + s.REWARD_KILL * len(state["others"]))/(s.REWARD_COIN * s.SCENARIOS["classic"]["COIN_COUNT"] + s.REWARD_KILL * self.CONFIG["NUM_OPPONENTS"])),
+        USELESS_BOMB: -0.3 if self.CONFIG["USE_DANGER_POTENTIAL"] else -0.35,
+        TRAPPED_ITSELF: -1,
+        # Penalize the agent for dying by the number of coins and opponents left (normalized and multiplied by 2)
+        e.GOT_KILLED: 2 * min(-0.5, -(s.REWARD_COIN * self.num_of_remaining_coins + s.REWARD_KILL * len(state["others"]))/(s.REWARD_COIN * s.SCENARIOS["classic"]["COIN_COUNT"] + s.REWARD_KILL * self.CONFIG["NUM_OPPONENTS"])),
     }
 
     # Compute the reward based on the events
