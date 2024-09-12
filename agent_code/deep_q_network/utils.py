@@ -803,7 +803,12 @@ def potential_of_state(state: Union[dict, None], add_state: Union[np.ndarray, No
 
         # Choose between the distances
         # Take the distance to the nearest opponent if there is no remaining coin OR there is no crate OR the distance to the nearest opponent is smaller (and smaller than s.BOMB_POWER)
-        if normalized_num_of_remaining_coins == 0 or nearest_crate_distance is None or (nearest_opponent_distance is not None and nearest_opponent_distance < nearest_crate_distance and nearest_opponent_distance <= s.BOMB_POWER):
+        if (len(state["others"]) > 0 
+            and (normalized_num_of_remaining_coins == 0 
+                or nearest_crate_distance is None 
+                or  (nearest_opponent_distance is not None 
+                    and nearest_opponent_distance < nearest_crate_distance 
+                    and nearest_opponent_distance <= s.BOMB_POWER))):
             # Return the potential based on the distance to the nearest opponent
             # IMPORTANT: We add here + 1 to the negative of nearest_opponent_distance since without it, the
             #            the exponent can never get 0            

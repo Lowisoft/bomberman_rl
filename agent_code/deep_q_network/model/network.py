@@ -62,16 +62,16 @@ class Network(nn.Module):
         else:
             self.conv_layers = nn.Sequential(
                 # Input: (batch_size, channel_size, column_size, row_size)
-                    # Output: (batch_size, 8, column_size, row_size)
-                    nn.Conv2d(in_channels=channel_size, out_channels=8, kernel_size=3, stride=1, padding=1),
-                    nn.ReLU(),
-                    # Input: (batch_size, 8, column_size, row_size)
-                    # Output: (batch_size, 16, column_size - 2, row_size - 2)
-                    nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=1, padding=0),
-                    nn.ReLU(),
-                    # Input: (batch_size, 16, column_size - 2, row_size - 2)
-                    # Output: (batch_size, self.feature_size)
-                    nn.Flatten(),
+                # Output: (batch_size, 8, column_size, row_size)
+                nn.Conv2d(in_channels=channel_size, out_channels=8, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                # Input: (batch_size, 8, column_size, row_size)
+                # Output: (batch_size, 16, column_size - 2, row_size - 2)
+                nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=1, padding=0),
+                nn.ReLU(),
+                # Input: (batch_size, 16, column_size - 2, row_size - 2)
+                # Output: (batch_size, self.feature_size)
+                nn.Flatten(),
             )
 
             # Calculate the size of the flattened feature map after the convolutional layers

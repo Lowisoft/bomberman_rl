@@ -261,7 +261,7 @@ def get_reward(self, state: dict, add_state: np.ndarray, action: str, next_state
         USELESS_BOMB: -0.3 if self.CONFIG["USE_DANGER_POTENTIAL"] else -0.35,
         TRAPPED_ITSELF: -1,
         # Penalize the agent for dying by the number of coins and opponents left (normalized and multiplied by 2)
-        e.GOT_KILLED: 2 * min(-0.5, -(s.REWARD_COIN * self.num_of_remaining_coins + s.REWARD_KILL * len(state["others"]))/(s.REWARD_COIN * s.SCENARIOS["classic"]["COIN_COUNT"] + s.REWARD_KILL * self.CONFIG["NUM_OPPONENTS"])),
+        e.GOT_KILLED: 2 * min(-0.5, -(s.REWARD_COIN * self.num_of_remaining_coins + s.REWARD_KILL * len(state["others"]))/self.max_possible_score),
     }
 
     # Compute the reward based on the events
@@ -311,7 +311,8 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
     add_state = np.array([
         self.num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], # Normalize the number of remaining coins
         len(state["others"]) / self.CONFIG["NUM_OPPONENTS"], # Normalize the number of opponents
-        int(state["self"][2]) # Whether the agent can place a bomb
+        int(state["self"][2]), # Whether the agent can place a bomb
+        state["self"][1] / self.max_possible_score # Normalize the current score
     ])
     # Initialize the next number of remaining coins
     next_num_of_remaining_coins = self.num_of_remaining_coins if next_state is not None else 0
@@ -330,7 +331,8 @@ def handle_step(self, state: dict, action: str, next_state: Union[dict, None], e
     add_next_state = np.array([
         next_num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], # Normalize the number of remaining coins
         len(next_state["others"]) / self.CONFIG["NUM_OPPONENTS"], # Normalize the number of opponents
-        int(next_state["self"][2]) # Whether the agent can place a bomb
+        int(next_state["self"][2]), # Whether the agent can place a bomb
+        next_state["self"][1] / self.max_possible_score # Normalize the current score
     ]) if next_state is not None else None
 
     # Comput the reward for the action taken in the state

@@ -94,6 +94,9 @@ def setup(self) -> None:
     # Store the number of remaining coins
     self.num_of_remaining_coins = s.SCENARIOS["classic"]["COIN_COUNT"] 
 
+    # Store the max possible score
+    self.max_possible_score = s.REWARD_COIN * s.SCENARIOS["classic"]["COIN_COUNT"] + s.REWARD_KILL * self.CONFIG["NUM_OPPONENTS"]
+
     # Store the coins of the previous game state
     self.prev_coins = []
 
@@ -135,7 +138,8 @@ def act(self, game_state: dict) -> str:
     add_features = np.array([
         self.num_of_remaining_coins / s.SCENARIOS["classic"]["COIN_COUNT"], # Normalize the number of remaining coins
         len(game_state["others"]) / self.CONFIG["NUM_OPPONENTS"], # Normalize the number of opponents
-        int(game_state["self"][2]) # Whether the agent can place a bomb
+        int(game_state["self"][2]), # Whether the agent can place a bomb
+        game_state["self"][1] / self.max_possible_score # Normalize the current score
     ])
 
     # Select the action using an epsilon-greedy policy
