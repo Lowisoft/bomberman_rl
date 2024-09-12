@@ -41,23 +41,19 @@ class Network(nn.Module):
                 nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
                 # Input: (batch_size, 16, 15, 15)
-                # Output: (batch_size, 32, 13, 13)
+                # Output: (batch_size, 16, 7, 7)
+                nn.MaxPool2d(kernel_size=2, stride=2),
+                # Input: (batch_size, 16, 7, 7)
+                # Output: (batch_size, 32, 5, 5)
                 nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=0),
                 nn.ReLU(),
-                # Input: (batch_size, 32, 13, 13)
-                # Output: (batch_size, 32, 6, 6)
-                nn.MaxPool2d(kernel_size=2, stride=2),
-                # Input: (batch_size, 32, 6, 6)
-                # Output: (batch_size, 64, 4, 4)
-                nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=0),
-                nn.ReLU(),
-                # Input: (batch_size, 64, 4, 4)
-                # Output: (batch_size, 64 * 4 * 4)
+                # Input: (batch_size, 32, 5, 5)
+                # Output: (batch_size, 32 * 5 * 5)
                 nn.Flatten(),
             )
 
             # Calculate the size of the flattened feature map after the convolutional layers
-            self.feature_size = 64 * 4 * 4 # = 1024
+            self.feature_size = 32 * 5 * 5 # = 800
             
         else:
             self.conv_layers = nn.Sequential(
