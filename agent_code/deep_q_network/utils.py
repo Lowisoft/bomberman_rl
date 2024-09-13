@@ -601,20 +601,6 @@ def distance_to_best_coin(state: Union[dict, None]) -> Union[float, None]:
     agent_position = state["self"][3]
     agent_node = grid.node(*agent_position)
 
-    # Find the reachable opponents that could potentially steal the coin
-    reachable_opponents = []
-    # Loop over all opponents
-    for opponent in state["others"]:
-        opponent_node = grid.node(*opponent[3])
-        path, _ = finder.find_path(agent_node, opponent_node, grid)
-        # Calculate the distance to the opponent
-        distance_to_opponent = len(path) - 1
-        # Check if the opponent is reacheable
-        if distance_to_opponent > 0:
-            reachable_opponents.append(opponent)
-        # Cleanup the grid for the next potential iteration
-        grid.cleanup()
-
     best_coin_distance = None
     # Loop over all coins
     for coin in state["coins"]:
@@ -624,21 +610,29 @@ def distance_to_best_coin(state: Union[dict, None]) -> Union[float, None]:
         distance_to_coin = len(path) - 1
         # Cleanup the grid for the next potential iteration
         grid.cleanup()
-        # Check if the coin cannot be stolen by any opponent
-        for opponent in reachable_opponents:
-            opponent_node = grid.node(*opponent[3])
-            opponent_path, _ = finder.find_path(opponent_node, coin_node, grid)
-            # Calculate the distance to the coin for the opponent
-            opponent_distance_to_coin = len(opponent_path) - 1
-            # Cleanup the grid for the next potential iteration
-            grid.cleanup()
-            # Check if the opponent can steal the coin
-            # NB: The opponent can steal the coin if it is nearer than 75% of the distance of the agent to the coin
-            #     This means that if the agent has a distance of 2 or 3 to the coin, then the opponent must only have a distance of at least one less,
-            #     but if the agent has a distance of 4 to the coin, the opponent must have a distance of 2 or less (since strictly less)
-            if opponent_distance_to_coin > 0 and opponent_distance_to_coin < 0.75 * distance_to_coin:
-                # If so, do not consider the coin
-                distance_to_coin = -1
+        # Check if the coin cannot be stolen by any opponent (only necessary if the agent can reach the coin)
+        if distance_to_coin > 0:
+            for opponent in state["others"]:
+                # Check if the opponent is within the maximum distance (which is the distance from the agent to the coin)
+                # NB: The Manhattan distance is a lower bound for the actual distance
+                if manhattan_distance(coin, opponent[3]) >= distance_to_coin:
+                    # If not, continue with the next opponent (to save computation time)
+                    continue
+                opponent_node = grid.node(*opponent[3])
+                opponent_path, _ = finder.find_path(opponent_node, coin_node, grid)
+                # Calculate the distance to the coin for the opponent
+                opponent_distance_to_coin = len(opponent_path) - 1
+                # Cleanup the grid for the next potential iteration
+                grid.cleanup()
+                # Check if the opponent can steal the coin
+                # NB: The opponent can steal the coin if it is nearer than 75% of the distance of the agent to the coin
+                #     This means that if the agent has a distance of 2 or 3 to the coin, then the opponent must only have a distance of at least one less,
+                #     but if the agent has a distance of 4 to the coin, the opponent must have a distance of 2 or less (since strictly less)
+                if opponent_distance_to_coin > 0 and opponent_distance_to_coin < 0.75 * distance_to_coin:
+                    # If so, do not consider the coin
+                    distance_to_coin = -1
+                    # Break the loop, since we found already an opponent that can steal the coin
+                    break
         # Update the best coin distance
         # NB: Do not consider coins at the agent's position (which can happen in the initial state of the coin heaven scenario)
         # NB2: Filter out unreachable coins (i.e. distance of -1)
@@ -648,11 +642,12 @@ def distance_to_best_coin(state: Union[dict, None]) -> Union[float, None]:
     return best_coin_distance
 
 
-def distance_to_nearest_opponent(state: Union[dict, None]) -> Union[float, None]:
+def distance_to_nearest_opponent(state: Union[dict, None], max_distance: Union[int, None]) -> Union[float, None]:
     """ Calculate the distance to the nearest opponent.
         Returns None if there is no (reachable) opponent.
     Args:
         state (Union[dict, None]): The state for which compute the distance.
+        max_distance (Union[int, None]): The maximum distance to consider. If None, there is no maximum distance.
 
     Returns:
         Union[float, None]: The distance to the nearest opponent.
@@ -682,6 +677,11 @@ def distance_to_nearest_opponent(state: Union[dict, None]) -> Union[float, None]
     nearest_opponent_distance = None
     # Loop over all opponents
     for opponent in state["others"]:
+        # Check if the opponent is within the maximum distance
+        # NB: The Manhattan distance is a lower bound for the actual distance
+        if max_distance is not None and manhattan_distance(agent_position, opponent[3]) > max_distance:
+            # If not, continue with the next opponent (to save computation time)
+            continue
         opponent_node = grid.node(*opponent[3])
         path, _ = finder.find_path(agent_node, opponent_node, grid)
         # Calculate the distance to the opponent
@@ -793,22 +793,24 @@ def potential_of_state(state: Union[dict, None], add_state: Union[np.ndarray, No
         # Return the potential based on the distance to the best coin
         return 1.2 ** (-best_coin_distance) if best_coin_distance is not None else 0.0
     else:
-        # Otherwise, get the distance to the nearest crate and to the nearest opponent
-        nearest_crate_distance = distance_to_nearest_crate(state)
-        nearest_opponent_distance = distance_to_nearest_opponent(state)
-
-        # Extract the number of remaining coins from the additional state information
+        # Otherwise, extract the number of remaining coins from the additional state information
         # IMPORTANT: This value is normalized
         normalized_num_of_remaining_coins = add_state[0] if add_state is not None else 0
 
+        # Get the distance to the nearest crate and to the nearest opponent
+        nearest_crate_distance = distance_to_nearest_crate(state)
+        # For the nearest opponent distance, we have a maximum distance if there are remaining coins or crates
+        opponent_max_distance = s.BOMB_POWER if normalized_num_of_remaining_coins != 0 and nearest_crate_distance is not None else None
+        nearest_opponent_distance = distance_to_nearest_opponent(state, opponent_max_distance)
+
         # Choose between the distances
-        # Take the distance to the nearest opponent if there is no remaining coin OR there is no crate OR the distance to the nearest opponent is smaller (and smaller than s.BOMB_POWER)
+        # Take the distance to the nearest opponent if there is no remaining coin OR there is no crate OR the distance to the nearest opponent is smaller (and smaller than the max distance)
         if (len(state["others"]) > 0 
             and (normalized_num_of_remaining_coins == 0 
                 or nearest_crate_distance is None 
                 or  (nearest_opponent_distance is not None 
                     and nearest_opponent_distance < nearest_crate_distance 
-                    and nearest_opponent_distance <= s.BOMB_POWER))):
+                    and nearest_opponent_distance <= opponent_max_distance))):
             # Return the potential based on the distance to the nearest opponent
             # IMPORTANT: We add here + 1 to the negative of nearest_opponent_distance since without it, the
             #            the exponent can never get 0            
