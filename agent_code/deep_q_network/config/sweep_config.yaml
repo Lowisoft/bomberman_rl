@@ -1,4 +1,4 @@
-method: grid
+method: random
 metric:
   name: test_avg_score
   goal: maximize
