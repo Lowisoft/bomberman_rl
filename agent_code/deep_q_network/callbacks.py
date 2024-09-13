@@ -80,8 +80,8 @@ def setup(self) -> None:
 
     # Check if we can start from a saved state
     if "START_FROM" in self.CONFIG and self.CONFIG["START_FROM"] in ["best", "last"] and os.path.exists(f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/"):
-        print(f"Loading {self.CONFIG["START_FROM"]} network from saved state.")
-        load_network(network=self.local_q_network, path=f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/", device=self.device)
+        print(f"Loading {self.CONFIG["START_FROM"]} network from saved state {"(only CNN layers)" if self.CONFIG["USE_ONLY_CNN"] else "(all layers)"}.")
+        load_network(network=self.local_q_network, path=f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/", device=self.device, use_only_cnn=self.CONFIG["USE_ONLY_CNN"])
     # Otherwise, set up the model from scratch
     else:
         print("Setting up network from scratch.")

@@ -3,6 +3,7 @@ PROJECT_NAME: deep_q_network
 PROJECT_NAME_SHORT: DQN
 PATH: ./model/data/
 START_FROM: null # null, best, last
+USE_ONLY_CNN: false
 NETWORK_PATH: ./model/data/network.pth
 TRAINING_DATA_PATH: ./model/data/training_data.pth
 BUFFER_PATH: ./model/data/experience_replay_buffer.pkl

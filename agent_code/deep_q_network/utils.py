@@ -468,18 +468,23 @@ def save_data(project_name: str, run, run_name: str, wandbAPI, metadata: dict, n
         print(e)
 
 
-def load_network(network, path: str, device: torch.device) -> None:
+def load_network(network, path: str, device: torch.device, use_only_cnn: bool = False) -> None:
     """ Load the network.
 
     Args:
         network (Network): The network to load the state_dict into.
         path (str): The path to the network.
         device (torch.device): The device to load the network on.
+        use_only_cnn (bool, optional): Whether only the CNN part of the network is used. Defaults to False.
     """
     network_path = os.path.join(path, "network.pth")
     # Load the network
     with open(network_path, 'rb') as f:
         network.load_state_dict(torch.load(f, map_location=device, weights_only=True))
+        # Check if only the CNN part of the network is used
+        if use_only_cnn:
+            # If so, initialize the weights of FCN with Kaiming initialization
+            network.initialize_weights_kaiming(use_only_cnn)
 
 
 def load_training_data(optimizer, buffer, path: str, device: torch.device, use_per: bool = False) -> Tuple[float, Union[float, None], float, int, int]:
@@ -502,21 +507,23 @@ def load_training_data(optimizer, buffer, path: str, device: torch.device, use_p
     training_data_path = os.path.join(path, "training_data.pth")
     #buffer_path = os.path.join(path, "experience_replay_buffer.pkl")
 
-    training_data = None
+    training_data = {}
     # Load the training data
-    with open(training_data_path, 'rb') as f:
-        training_data = torch.load(f, map_location=device, weights_only=True)
+    if os.path.exists(training_data_path):
+        with open(training_data_path, 'rb') as f:
+            training_data = torch.load(f, map_location=device, weights_only=True)
 
-    optimizer.load_state_dict(training_data['optimizer'])
+    if training_data.get('optimizer', None):
+        optimizer.load_state_dict(training_data['optimizer'])
 
     # Move the optimizer to the device
     move_optimizer_to_device(optimizer, device)
 
-    exploration_rate = training_data['exploration_rate']
+    exploration_rate = training_data.get('exploration_rate', 1)
     weight_importance = training_data.get('weight_importance', None) if use_per else None
-    test_best_avg_score = training_data['test_best_avg_score']
-    training_steps = training_data['training_steps']
-    training_rounds = training_data['training_rounds']
+    test_best_avg_score = training_data.get('test_best_avg_score', 0)
+    training_steps = training_data.get('training_steps', 0)
+    training_rounds = training_data.get('training_rounds', 0)
 
     # Load the buffer
     #buffer.load(buffer_path)
