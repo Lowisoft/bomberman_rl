@@ -1,4 +1,4 @@
-VERSION: 22
+VERSION: 23
 PROJECT_NAME: deep_q_network
 PROJECT_NAME_SHORT: DQN
 PATH: ./model/data/
