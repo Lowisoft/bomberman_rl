@@ -35,7 +35,7 @@ command:
   - python
   - main.py
   - play
-  - --agents deep_q_network peaceful_agent peaceful_agent coin_collector_agent
+  - --agents deep_q_network peaceful_agent rule_based_agent coin_collector_agent
   - --train=1
   - --n-rounds=1500000
   - --scenario=classic
