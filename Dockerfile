@@ -9,8 +9,12 @@ RUN apt-get -y install gcc g++
 #RUN conda install pandas
 #RUN pip install networkx dill pyastar2d easydict sympy pygame
 
-RUN conda install numpy pytorch torchvision cudatoolkit=11.8 -c pytorch -c nvidia
-RUN pip install tqdm pathfinding pyaml pygame wandb
+
+#RUN conda install numpy pytorch torchvision cudatoolkit=11.8 -c pytorch -c nvidia
+#RUN pip install tqdm pathfinding pyaml pygame wandb
+
+
+
 
 ##### MANUALLY ADDED START #####
 #RUN pip install wandb
