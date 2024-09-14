@@ -1,5 +1,5 @@
 VERSION: 24
-PROJECT_NAME: deep_q_network
+PROJECT_NAME: classic_sweep
 PROJECT_NAME_SHORT: DQN
 PATH: ./model/data/
 START_FROM: null # null, best, last

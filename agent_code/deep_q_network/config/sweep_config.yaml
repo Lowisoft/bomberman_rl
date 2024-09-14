@@ -26,6 +26,8 @@ parameters:
     values: [0.999999, 0.9999993, 0.9999995]
   TARGET_UPDATE_FREQUENCY:
     values: [1000, 3000]
+  OPTIMIZER:
+    values: [Adam, RMSprop]
   START_FROM:  
     value: null # null, best, last (usually you want to start the sweep from scratch)
 project: deep_q_network
