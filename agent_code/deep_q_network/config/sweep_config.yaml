@@ -4,8 +4,28 @@ metric:
   goal: maximize
 
 parameters:
-  TD_STEPS:
+  LEARNING_RATE:
+    values: [0.0001, 0.0005, 0.001]
+  USE_DOUBLE_DQN:
+    values: [true, false]
+  USE_DUELING_DQN:
+    values: [true, false]
+  USE_PER:
+    values: [true, false]
+  BATCH_SIZE:
+    values: [32, 64]
+  TRAINING_FREQUENCY:
+    values: [60, 90]
+  HIDDEN_LAYER_SIZE:
+    values: [256, 512]
+  NUM_EPOCHS:
     values: [3, 5]
+  DISCOUNT_RATE:
+    values: [0.9, 0.93, 0.95]
+  EXPLORATION_RATE_DECAY:
+    values: [0.999999, 0.9999993, 0.9999995]
+  TARGET_UPDATE_FREQUENCY:
+    values: [1000, 3000]
   START_FROM:  
     value: null # null, best, last (usually you want to start the sweep from scratch)
 project: deep_q_network
@@ -15,6 +35,6 @@ command:
   - play
   - --agents deep_q_network peaceful_agent peaceful_agent coin_collector_agent
   - --train=1
-  - --n-rounds=1000000
+  - --n-rounds=1500000
   - --scenario=classic
   - --no-gui
