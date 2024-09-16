@@ -246,8 +246,8 @@ def get_reward(self, state: dict, add_state: np.ndarray, action: str, next_state
     game_rewards = {
         e.COIN_COLLECTED: 1,
         e.KILLED_OPPONENT: 5,
-        e.INVALID_ACTION: -0.1,
-        USELESS_WAIT: -0.1,
+        e.INVALID_ACTION: -0.15,
+        USELESS_WAIT: -0.15,
         # NB: ONLY IF USE_DANGER_POTENTIAL: The agent receives a penalty of -0.1 for placing a bomb due to the potential so we compensate this in USEFUL_BOMB
         # NB2: The agent receives a penalty of at most -0.33 for dropping down in the crate potential function since now the distance to 
         #      another crate is used, which is further away. Note that the agent drops at least -0.09 because the next crate that is 
