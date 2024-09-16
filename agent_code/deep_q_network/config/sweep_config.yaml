@@ -5,25 +5,23 @@ metric:
 
 parameters:
   LEARNING_RATE:
-    values: [0.0001, 0.0005, 0.001]
+    values: [0.0001, 0.0005]
   USE_DOUBLE_DQN:
     values: [true, false]
+  USE_DUELING_DQN:
+    values: [true, false]
+  USE_PER:
+    values: [true, false]
   BATCH_SIZE:
-    values: [32, 64, 128]
-  TRAINING_FREQUENCY:
-    values: [60, 90, 120]
+    values: [32, 64]
   HIDDEN_LAYER_SIZE:
     values: [256, 512]
   NUM_EPOCHS:
     values: [3, 5, 7]
-  DISCOUNT_RATE:
-    values: [0.9, 0.93]
   EXPLORATION_RATE_DECAY:
     values: [0.999999, 0.9999993]
   TARGET_UPDATE_FREQUENCY:
-    values: [500, 1000, 3000]
-  OPTIMIZER:
-    values: [Adam, RMSprop]
+    values: [500, 1000]
   START_FROM:  
     value: null # null, best, last (usually you want to start the sweep from scratch)
 project: classic_sweep
@@ -33,9 +31,9 @@ command:
   - play
   - --agents
   - deep_q_network
-  - peaceful_agent
   - rule_based_agent
-  - coin_collector_agent
+  - rule_based_agent
+  - rule_based_agent
   - --train=1
   - --n-rounds=1500000
   - --scenario=classic

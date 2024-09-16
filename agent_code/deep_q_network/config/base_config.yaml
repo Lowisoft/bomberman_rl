@@ -7,7 +7,7 @@ USE_ONLY_CNN: false
 NETWORK_PATH: ./model/data/network.pth
 TRAINING_DATA_PATH: ./model/data/training_data.pth
 BUFFER_PATH: ./model/data/experience_replay_buffer.pkl
-MAX_RUNTIME: 28800 # 480 minutes
+MAX_RUNTIME: 57600 # 960 minutes
 CHANNEL_SIZE: 6
 ACTION_SIZE: 6
 ADD_STATE_SIZE: 4
@@ -40,4 +40,4 @@ EXPLORATION_RATE_DECAY: 0.9999995
 DISCOUNT_RATE: 0.93
 TRAINING_FREQUENCY: 60
 TARGET_UPDATE_FREQUENCY: 3000
-OPTIMIZER: RMSprop # Adam, RMSprop, SGD
+OPTIMIZER: Adam # Adam, RMSprop, SGD
