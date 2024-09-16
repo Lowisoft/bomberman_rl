@@ -1,4 +1,4 @@
-VERSION: 24
+VERSION: 25
 PROJECT_NAME: classic_sweep
 PROJECT_NAME_SHORT: DQN
 PATH: ./model/data/
