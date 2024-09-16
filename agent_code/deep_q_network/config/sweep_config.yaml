@@ -19,7 +19,7 @@ parameters:
   NUM_EPOCHS:
     values: [3, 5, 7]
   EXPLORATION_RATE_DECAY:
-    values: [0.999999, 0.9999993]
+    values: [0.999999, 0.9999994]
   TARGET_UPDATE_FREQUENCY:
     values: [500, 1000]
   START_FROM:  
