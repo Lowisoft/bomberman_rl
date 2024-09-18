@@ -580,8 +580,9 @@ def update_exploration_rate(self, exploration_rate: float) -> float:
         float: The updated exploration rate.
     """
 
-    if self.CONFIG["EXPLORATION_RATE_DECAY"] == 0.999999 and exploration_rate < 0.3:
-        return max(self.CONFIG["EXPLORATION_RATE_MIN"], exploration_rate * 0.9999995)
+    # Decrease the exploration rate more quickly at the beginning and then slower if it is below 0.3    
+    if self.CONFIG["EXPLORATION_RATE_DECAY"] == 0.9999995 and exploration_rate < 0.3:
+        return max(self.CONFIG["EXPLORATION_RATE_MIN"], exploration_rate * 0.99999975)
     
     # Decay the exploration rate if it is above the minimum exploration rate
     return max(self.CONFIG["EXPLORATION_RATE_MIN"], exploration_rate * self.CONFIG["EXPLORATION_RATE_DECAY"])
