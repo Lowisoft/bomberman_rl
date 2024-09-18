@@ -241,10 +241,20 @@ def get_reward(self, state: dict, add_state: np.ndarray, action: str, next_state
     if agent_has_trapped_itself(state, action, next_state, events):
         events.append(TRAPPED_ITSELF)
 
+    # Set the reward for collecting a coin depending on the coin importance hyperparameter
+    coin_reward = None
+    if self.CONFIG["COIN_IMPORTANCE"] == "low":
+        coin_reward = 1
+    elif self.CONFIG["COIN_IMPORTANCE"] == "medium":
+        coin_reward = 1.5
+    elif self.CONFIG["COIN_IMPORTANCE"] == "high": 
+        coin_reward = 2
+    else:
+        raise Exception("Coin importance not defined")
 
     # Define the rewards for the events
     game_rewards = {
-        e.COIN_COLLECTED: 1,
+        e.COIN_COLLECTED: coin_reward,
         e.KILLED_OPPONENT: 5,
         e.INVALID_ACTION: -0.15,
         USELESS_WAIT: -0.15,
@@ -273,7 +283,7 @@ def get_reward(self, state: dict, add_state: np.ndarray, action: str, next_state
 
 
     # Add reward shaping based on the potential of the state and the next state
-    reward_sum += self.CONFIG["DISCOUNT_RATE"] * potential_of_state(next_state, add_next_state) - potential_of_state(state, add_state)    
+    reward_sum += self.CONFIG["DISCOUNT_RATE"] * potential_of_state(self, next_state, add_next_state) - potential_of_state(self, state, add_state)    
 
     # Add reward shaping based on the danger potential of the state and the next state
     # IMPORTANT: For the danger potential, we must use a discount factor of 1,

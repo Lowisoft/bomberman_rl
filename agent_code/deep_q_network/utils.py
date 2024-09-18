@@ -777,7 +777,7 @@ def distance_to_nearest_crate(state: Union[dict, None]) -> Union[float, None]:
     return None
 
 
-def potential_of_state(state: Union[dict, None], add_state: Union[np.ndarray, None]) -> float:
+def potential_of_state(self, state: Union[dict, None], add_state: Union[np.ndarray, None]) -> float:
     """ Calculate the potential of the state.
 
     Args:
@@ -797,8 +797,16 @@ def potential_of_state(state: Union[dict, None], add_state: Union[np.ndarray, No
 
     # Check if there is any coin to target
     if best_coin_distance is not None:
-        # Return the potential based on the distance to the best coin
-        return 1.2 ** (-best_coin_distance) if best_coin_distance is not None else 0.0
+        # Return the potential based on the distance to the best coin and based on the coin importance
+        if self.CONFIG["COIN_IMPORTANCE"] == "low":
+            return 1.2 ** (-best_coin_distance) if best_coin_distance is not None else 0.0
+        elif self.CONFIG["COIN_IMPORTANCE"] == "medium":
+            return 1.5 * 1.3 ** (-best_coin_distance) if best_coin_distance is not None else 0.0
+        elif self.CONFIG["COIN_IMPORTANCE"] == "high": 
+            return 2 * 1.4 ** (-best_coin_distance) if best_coin_distance is not None else 0.0
+        else:
+            raise Exception("Coin importance not defined")
+
     else:
         # Otherwise, extract the number of remaining coins from the additional state information
         # IMPORTANT: This value is normalized

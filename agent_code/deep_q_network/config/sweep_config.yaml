@@ -1,27 +1,11 @@
-method: bayes
+method: grid
 metric:
   name: test_avg_score
   goal: maximize
 
 parameters:
-  LEARNING_RATE:
-    values: [0.0001, 0.0005]
-  USE_DOUBLE_DQN:
-    values: [true, false]
-  USE_DUELING_DQN:
-    values: [true, false]
-  USE_PER:
-    values: [true, false]
-  BATCH_SIZE:
-    values: [32, 64]
-  HIDDEN_LAYER_SIZE:
-    values: [256, 512]
-  NUM_EPOCHS:
-    values: [3, 5, 7]
-  EXPLORATION_RATE_DECAY:
-    values: [0.999999, 0.9999994]
-  TARGET_UPDATE_FREQUENCY:
-    values: [500, 1000]
+  COIN_IMPORTANCE:
+    values: ['low', 'medium', 'high']
   START_FROM:  
     value: null # null, best, last (usually you want to start the sweep from scratch)
 project: classic_sweep
