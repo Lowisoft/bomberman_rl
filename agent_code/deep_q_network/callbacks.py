@@ -20,7 +20,6 @@ from .utils import (
     distance_to_nearest_crate
 )
 from .model.network import Network
-#from .model.coin_collector_agent import coin_collector_act
 
 def setup(self) -> None:
     """
@@ -46,7 +45,7 @@ def setup(self) -> None:
         now = datetime.now()
         
         # Create a unique name for the run
-        self.run_name = f"{self.CONFIG['PROJECT_NAME_SHORT']}_{now.strftime("%y%m%d%H%M%S")}"
+        self.run_name = f'{self.CONFIG["PROJECT_NAME_SHORT"]}_{now.strftime("%y%m%d%H%M%S")}'
 
         # Initialize the wandb run
         self.run = wandb.init(
@@ -79,9 +78,9 @@ def setup(self) -> None:
         ).to(self.device)
 
     # Check if we can start from a saved state
-    if "START_FROM" in self.CONFIG and self.CONFIG["START_FROM"] in ["best", "last"] and os.path.exists(f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/"):
-        print(f"Loading {self.CONFIG["START_FROM"]} network from saved state {"(only CNN layers)" if self.CONFIG["USE_ONLY_CNN"] else "(all layers)"}.")
-        load_network(network=self.local_q_network, path=f"{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/", device=self.device, use_only_cnn=self.CONFIG["USE_ONLY_CNN"])
+    if "START_FROM" in self.CONFIG and self.CONFIG["START_FROM"] in ["best", "last"] and os.path.exists(f'{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/'):
+        print(f'Loading {self.CONFIG["START_FROM"]} network from saved state {"(only CNN layers)" if self.CONFIG["USE_ONLY_CNN"] else "(all layers)"}.')
+        load_network(network=self.local_q_network, path=f'{self.CONFIG["PATH"]}/{self.CONFIG["START_FROM"]}/', device=self.device, use_only_cnn=self.CONFIG["USE_ONLY_CNN"])
     # Otherwise, set up the model from scratch
     else:
         print("Setting up network from scratch.")
