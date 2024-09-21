@@ -1,4 +1,4 @@
-VERSION: 32
+VERSION: 36
 PROJECT_NAME: classic_sweep
 PROJECT_NAME_SHORT: DQN
 PATH: ./model/data/
@@ -7,7 +7,7 @@ USE_ONLY_CNN: false
 NETWORK_PATH: ./model/data/network.pth
 TRAINING_DATA_PATH: ./model/data/training_data.pth
 BUFFER_PATH: ./model/data/experience_replay_buffer.pkl
-MAX_RUNTIME: 72000 # 1200 minutes
+MAX_RUNTIME: 122400 # 2040 minutes
 CHANNEL_SIZE: 6
 ACTION_SIZE: 6
 ADD_STATE_SIZE: 4
@@ -31,7 +31,7 @@ BREAK_LOOPS: false
 USE_DOUBLE_DQN: true
 USE_DUELING_DQN: false
 USE_PER: true
-COIN_IMPORTANCE: 'high'
+COIN_IMPORTANCE: 'low'
 TD_STEPS: 1
 HIDDEN_LAYER_SIZE: 512
 NUM_EPOCHS: 3
