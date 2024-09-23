@@ -1,7 +1,7 @@
 import os 
 import random
 import torch
-# import wandb
+# import wandb # ONLY FOR TRAINING
 import numpy as np
 from collections import deque
 from pathfinding.core.grid import Grid
@@ -468,18 +468,23 @@ def round_ended_but_not_dead(self, game_state: dict) -> bool:
 #         print(e)
 
 
-def load_network(network, path: str, device: torch.device) -> None:
+def load_network(network, path: str, device: torch.device, use_only_cnn: bool = False) -> None:
     """ Load the network.
 
     Args:
         network (Network): The network to load the state_dict into.
         path (str): The path to the network.
         device (torch.device): The device to load the network on.
+        use_only_cnn (bool, optional): Whether only the CNN part of the network is used. Defaults to False.
     """
     network_path = os.path.join(path, "network.pth")
     # Load the network
     with open(network_path, 'rb') as f:
         network.load_state_dict(torch.load(f, map_location=device, weights_only=True))
+        # Check if only the CNN part of the network is used
+        if use_only_cnn:
+            # If so, initialize the weights of FCN with Kaiming initialization
+            network.initialize_weights_kaiming(use_only_cnn)
 
 
 def load_training_data(optimizer, buffer, path: str, device: torch.device, use_per: bool = False) -> Tuple[float, Union[float, None], float, int, int]:
@@ -502,21 +507,23 @@ def load_training_data(optimizer, buffer, path: str, device: torch.device, use_p
     training_data_path = os.path.join(path, "training_data.pth")
     #buffer_path = os.path.join(path, "experience_replay_buffer.pkl")
 
-    training_data = None
+    training_data = {}
     # Load the training data
-    with open(training_data_path, 'rb') as f:
-        training_data = torch.load(f, map_location=device, weights_only=True)
+    if os.path.exists(training_data_path):
+        with open(training_data_path, 'rb') as f:
+            training_data = torch.load(f, map_location=device, weights_only=True)
 
-    optimizer.load_state_dict(training_data['optimizer'])
+    if training_data.get('optimizer', None):
+        optimizer.load_state_dict(training_data['optimizer'])
 
     # Move the optimizer to the device
     move_optimizer_to_device(optimizer, device)
 
-    exploration_rate = training_data['exploration_rate']
+    exploration_rate = training_data.get('exploration_rate', 1)
     weight_importance = training_data.get('weight_importance', None) if use_per else None
-    test_best_avg_score = training_data['test_best_avg_score']
-    training_steps = training_data['training_steps']
-    training_rounds = training_data['training_rounds']
+    test_best_avg_score = training_data.get('test_best_avg_score', 0)
+    training_steps = training_data.get('training_steps', 0)
+    training_rounds = training_data.get('training_rounds', 0)
 
     # Load the buffer
     #buffer.load(buffer_path)
@@ -770,7 +777,7 @@ def distance_to_nearest_crate(state: Union[dict, None]) -> Union[float, None]:
     return None
 
 
-def potential_of_state(state: Union[dict, None], add_state: Union[np.ndarray, None]) -> float:
+def potential_of_state(self, state: Union[dict, None], add_state: Union[np.ndarray, None]) -> float:
     """ Calculate the potential of the state.
 
     Args:
@@ -790,8 +797,16 @@ def potential_of_state(state: Union[dict, None], add_state: Union[np.ndarray, No
 
     # Check if there is any coin to target
     if best_coin_distance is not None:
-        # Return the potential based on the distance to the best coin
-        return 1.2 ** (-best_coin_distance) if best_coin_distance is not None else 0.0
+        # Return the potential based on the distance to the best coin and based on the coin importance
+        if self.CONFIG["COIN_IMPORTANCE"] == "low":
+            return 1.2 ** (-best_coin_distance) if best_coin_distance is not None else 0.0
+        elif self.CONFIG["COIN_IMPORTANCE"] == "medium":
+            return 1.5 * 1.3 ** (-best_coin_distance) if best_coin_distance is not None else 0.0
+        elif self.CONFIG["COIN_IMPORTANCE"] == "high": 
+            return 2 * 1.4 ** (-best_coin_distance) if best_coin_distance is not None else 0.0
+        else:
+            raise Exception("Coin importance not defined")
+
     else:
         # Otherwise, extract the number of remaining coins from the additional state information
         # IMPORTANT: This value is normalized

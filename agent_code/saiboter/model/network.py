@@ -140,13 +140,16 @@ class Network(nn.Module):
             return value + advantage - advantage.mean()
 
     
-    def initialize_weights_kaiming(self) -> None:
+    def initialize_weights_kaiming(self, initialize_only_fcn: bool = False) -> None:
         """ Initialize the weights of the network using the Kaiming initialization. """
+
+        # Define the layers that should be initialized (either only fully connected layers or all layers)
+        layers = (nn.Linear) if initialize_only_fcn else (nn.Conv2d, nn.Linear)
         
         # Define the initialization function
         def init_weights(m):
             # Check if the module is a convolutional or linear layer
-            if isinstance(m, (nn.Conv2d, nn.Linear)):
+            if isinstance(m, layers):
                 # If so use the Kaiming initialization
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                 # Check if the module has a bias
