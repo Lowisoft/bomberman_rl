@@ -2,12 +2,9 @@ VERSION: 36
 PROJECT_NAME: classic_sweep
 PROJECT_NAME_SHORT: DQN
 PATH: ./model/data/
-START_FROM: last # null, best, last
+START_FROM: best # null, best, last
 USE_ONLY_CNN: false
-NETWORK_PATH: ./model/data/network.pth
-TRAINING_DATA_PATH: ./model/data/training_data.pth
-BUFFER_PATH: ./model/data/experience_replay_buffer.pkl
-MAX_RUNTIME: 122400 # 2040 minutes
+# MAX_RUNTIME: Null
 CHANNEL_SIZE: 6
 ACTION_SIZE: 6
 ADD_STATE_SIZE: 4
@@ -37,7 +34,7 @@ HIDDEN_LAYER_SIZE: 512
 NUM_EPOCHS: 3
 BUFFER_CAPACITY: 100000
 BUFFER_MIN_SIZE: 99990
-EXPLORATION_RATE_DECAY: 0.9999995 # IMPORTANT: The exploration rate WAS decreasing slower if it is below 0.3 (REMOVED)
+EXPLORATION_RATE_DECAY: 0.9999995
 DISCOUNT_RATE: 0.93
 TRAINING_FREQUENCY: 60
 TARGET_UPDATE_FREQUENCY: 1000
