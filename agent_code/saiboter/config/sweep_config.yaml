@@ -1,0 +1,24 @@
+method: grid
+metric:
+  name: test_avg_score
+  goal: maximize
+
+parameters:
+  COIN_IMPORTANCE:
+    values: ['low', 'medium', 'high']
+  START_FROM:  
+    value: null # null, best, last (usually you want to start the sweep from scratch)
+project: classic_sweep
+command:
+  - python
+  - main.py
+  - play
+  - --agents
+  - deep_q_network
+  - rule_based_agent
+  - rule_based_agent
+  - rule_based_agent
+  - --train=1
+  - --n-rounds=1500000
+  - --scenario=classic
+  - --no-gui
