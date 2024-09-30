@@ -9,10 +9,10 @@ In this project, we apply Reinforcement Learning (RL) to the classic game Bomber
 This repository contains the following branches:
 
 - **master**: The final submission of our agent.
-- ** test_submission_1**: The first test submission of our agent.
-- ** test_submission_2**: The second test submission of our agent.
-- ** dev_normal_dqn**: The development of the normal Deep Q-Network.
-- ** dev_dueling_dqn**: The development of the Dueling Deep Q-Network.
+- **test_submission_1**: The first test submission of our agent.
+- **test_submission_2**: The second test submission of our agent.
+- **dev_normal_dqn**: The development of the normal Deep Q-Network.
+- **dev_dueling_dqn**: The development of the Dueling Deep Q-Network.
 
 ## Video
 
