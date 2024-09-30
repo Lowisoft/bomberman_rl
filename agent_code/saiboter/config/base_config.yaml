@@ -1,5 +1,5 @@
 VERSION: 36
-PROJECT_NAME: classic_sweep
+PROJECT_NAME: saiboter
 PROJECT_NAME_SHORT: DQN
 PATH: ./model/data/
 START_FROM: best # null, best, last

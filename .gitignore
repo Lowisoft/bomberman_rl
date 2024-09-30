@@ -111,5 +111,3 @@ screenshots/*.webm
 
 replays/
 results/
-
-agent_code/deep_q_network/model/data
